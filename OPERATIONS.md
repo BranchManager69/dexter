@@ -1,13 +1,13 @@
 # Dexter Ops Runbook
 
-This document captures how Dexter (rebrand of Clanka) is deployed and operated on this server. It’s the single place to remember ports, services, env, and common tasks.
+This document captures how Dexter (rebrand of Clanka) is deployed and operated on this server. It’s the single place to remember ports, services, env, and common tasks. Prefer this over any old PM2-based notes.
 
 ## Overview
 - Domain: `dexter.cash` (and `www.dexter.cash`)
 - Backend/UI: Token-AI UI server (copied from Clanka), plus MCP HTTP server with OAuth
 - Reverse proxy: NGINX with Let’s Encrypt
 - Process manager: systemd (`dexter-ui`, `dexter-mcp`)
-- Env/config policy: reuse parent `.env` and configs via symlinks to avoid drift
+- Env: repo-root `.env` (authoritative) + `token-ai/.env` (real copy)
 
 ## Paths
 - Repo root: `/home/branchmanager/websites/dexter`
@@ -36,14 +36,15 @@ This document captures how Dexter (rebrand of Clanka) is deployed and operated o
 
 ## Services (systemd)
 - `dexter-ui.service`
-  - Exec: `/usr/bin/node server.js --port 3017`
+  - Exec: Node 20 runs `server.js --port 3017`
   - CWD: `/home/branchmanager/websites/dexter/token-ai`
   - Env:
     - `TOKEN_AI_UI_PORT=3017`
     - `TOKEN_AI_MCP_URL=http://127.0.0.1:3930/mcp`
+    - `TOKEN_AI_BROADCAST_CHILD_LOGS=1`
     - `SUPABASE_URL`, `SUPABASE_ANON_KEY`
 - `dexter-mcp.service`
-  - Exec: `/usr/bin/node mcp/http-server-oauth.mjs`
+  - Exec: Node 20 runs `mcp/http-server-oauth.mjs`
   - CWD: `/home/branchmanager/websites/dexter/token-ai`
   - Env:
     - `TOKEN_AI_MCP_PORT=3930`
@@ -55,18 +56,14 @@ Common commands:
 - `journalctl -u dexter-ui -f` (tail logs)
 - `sudo nginx -t && sudo systemctl reload nginx`
 
-## Environment & Symlinks
-- Single source of env: parent `.env`
-  - `~/websites/dexter/.env` → symlink to `~/websites/degenduel/.env`
-  - `~/websites/dexter/token-ai/.env` → symlink to same
-- Parent config reused via symlinks:
-  - `~/websites/dexter/config` → `~/websites/degenduel/config`
-  - `~/websites/dexter/utils` → `~/websites/degenduel/utils`
-- Why: preserve exact working configuration without key rotation; easy revert/compare.
+## Environment
+- Authoritative env file: `~/websites/dexter/.env` (this repo)
+- Local backend env: `~/websites/dexter/token-ai/.env` is a real copy kept in sync with the root `.env`.
+  - After editing the root `.env`, copy it down: `cp ~/websites/dexter/.env ~/websites/dexter/token-ai/.env`
+  - Then restart services to pick up changes: `sudo systemctl restart dexter-ui dexter-mcp`
 
-### Decoupling plan (later)
-- Copy only needed pieces from parent into Dexter: `config/prisma.js`, `config/database-env.js`, any imports used by `token-ai/*`, and required `utils/*`.
-- Replace symlinks with real files; set dedicated `.env` for Dexter.
+### Decoupling notes
+- Dexter now owns its env files. If any remaining symlinks exist to parent repos, replace them with real copies before further refactors.
 
 ## Cloudflare
 - Recommended: use an API Token (not Global API Key) for purges.
@@ -110,3 +107,60 @@ Common commands:
 - Dexter is a separate instance; NGINX routes dexter.cash to the new services.
 - Reports read by Dexter UI are from the local token-ai copy, not Clanka.
 
+## PM2 Cleanup (one-time)
+- Stop and remove the old app if it’s still present:
+  - `pm2 list`
+  - `pm2 stop ai-ui && pm2 delete ai-ui`
+  - `pm2 save`
+
+## Service Unit Examples
+Templates (use Node 20 path and replace placeholders):
+
+`/etc/systemd/system/dexter-ui.service`
+```
+[Unit]
+Description=Dexter UI Server (token-ai server.js)
+After=network.target
+
+[Service]
+Type=simple
+User=branchmanager
+Group=branchmanager
+WorkingDirectory=/home/branchmanager/websites/dexter/token-ai
+Environment=NODE_ENV=production
+Environment=TOKEN_AI_UI_PORT=3017
+Environment=TOKEN_AI_MCP_URL=http://127.0.0.1:3930/mcp
+Environment=TOKEN_AI_BROADCAST_CHILD_LOGS=1
+Environment=SUPABASE_URL=https://<your-supabase>.supabase.co
+Environment=SUPABASE_ANON_KEY=<anon-key>
+ExecStart=/home/branchmanager/.nvm/versions/node/v20.19.1/bin/node server.js --port 3017
+Restart=always
+RestartSec=5
+Environment=PATH=/home/branchmanager/.nvm/versions/node/v20.19.1/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/systemd/system/dexter-mcp.service`
+```
+[Unit]
+Description=Dexter MCP HTTP Server (OAuth)
+After=network.target
+
+[Service]
+Type=simple
+User=branchmanager
+Group=branchmanager
+WorkingDirectory=/home/branchmanager/websites/dexter/token-ai
+Environment=NODE_ENV=production
+Environment=TOKEN_AI_MCP_PORT=3930
+Environment=TOKEN_AI_MCP_PUBLIC_URL=https://dexter.cash/mcp
+ExecStart=/home/branchmanager/.nvm/versions/node/v20.19.1/bin/node mcp/http-server-oauth.mjs
+Restart=always
+RestartSec=5
+Environment=PATH=/home/branchmanager/.nvm/versions/node/v20.19.1/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target
+```
