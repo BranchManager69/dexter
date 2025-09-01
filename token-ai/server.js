@@ -11,8 +11,11 @@ import fs from 'fs';
 import OpenAI from 'openai';
 import crypto from 'crypto';
 import prisma from '../config/prisma.js';
+import { registerRealtimeRoutes } from './server/routes/realtime.js';
+import { registerMcpProxyRoutes } from './server/routes/mcpProxy.js';
+import { registerIdentityMiddleware, registerAuthRoutes } from './server/routes/auth.js';
+import { registerWalletRoutes } from './server/routes/wallets.js';
 import { RUN_LIMIT, LOGS_PER_RUN_LIMIT, CHILD_MAX_MB, activeRuns, childProcs, spawnAnalyzer, setRunLogListener, setRunExitListener, getRunLogs, killRun } from './core/run-manager.js';
-import { getRealtimeTools } from './core/realtime-tools.js';
 
 // In-memory cache for lightweight endpoints
 const memCache = new Map(); // key -> { at, data }
@@ -144,90 +147,17 @@ function broadcast(obj){
   }
 }
 
-// Minimal HS256 JWT helpers for short‑lived MCP user tokens
-function b64url(input){
-  return Buffer.from(input).toString('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-}
-function b64urlJSON(obj){ return b64url(JSON.stringify(obj)); }
-function hmacSHA256(key, data){ return crypto.createHmac('sha256', key).update(data).digest('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_'); }
-function jwtSignHS256(payload, secret, ttlSec=600){
-  const now = Math.floor(Date.now()/1000);
-  const body = { iat: now, exp: now + ttlSec, ...payload };
-  const header = { alg:'HS256', typ:'JWT' };
-  const token = `${b64urlJSON(header)}.${b64urlJSON(body)}`;
-  const sig = hmacSHA256(secret, token);
-  return `${token}.${sig}`;
-}
-function jwtVerifyHS256(token, secret){
-  try {
-    const parts = String(token).split('.'); if (parts.length !== 3) return null;
-    const [h,p,s] = parts; const sig = hmacSHA256(secret, `${h}.${p}`); if (sig !== s) return null;
-    const payload = JSON.parse(Buffer.from(p.replace(/-/g,'+').replace(/_/g,'/'),'base64').toString('utf8'));
-    const now = Math.floor(Date.now()/1000); if (payload.exp && now >= payload.exp) return null;
-    return payload;
-  } catch { return null; }
-}
-
-// Issue a short‑lived MCP user token for the UI to attach via ?userToken=
-// Priority: use logged-in user (via Supabase JWT in Authorization), else demo user when allowed.
-app.get('/mcp-user-token', async (req, res) => {
-  try {
-    const secret = process.env.MCP_USER_JWT_SECRET || process.env.TOKEN_AI_EVENTS_TOKEN || '';
-    if (!secret) return res.status(501).json({ ok:false, error:'mcp_user_secret_missing' });
-    let userId = null;
-    // Supabase auth: verify Authorization: Bearer <access_token> using Auth API if available
-    try {
-      const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
-      const anonKey = process.env.SUPABASE_ANON_KEY || '';
-      const auth = String(req.headers['authorization']||'');
-      if (supabaseUrl && anonKey && auth.startsWith('Bearer ')) {
-        const tok = auth.slice(7).trim();
-        const resp = await fetch(`${supabaseUrl}/auth/v1/user`, { headers: { 'authorization': `Bearer ${tok}`, 'apikey': anonKey } });
-        if (resp.ok) {
-          const data = await resp.json().catch(()=>null);
-          const id = data?.id || data?.user?.id;
-          if (id) userId = String(id);
-        }
-      }
-    } catch {}
-    // Dev override (optional): X-Dev-User-Id
-    if (!userId && String(process.env.TOKEN_AI_DEV_ALLOW_USER_TOKEN||'').toLowerCase()==='1') {
-      const dev = String(req.headers['x-dev-user-id']||'').trim(); if (dev) userId = dev;
-    }
-    // Demo fallback
-    if (!userId) {
-      if (String(process.env.TOKEN_AI_DEMO_MODE||'1')==='1') userId = 'demo';
-      else return res.status(401).json({ ok:false, error:'unauthorized' });
-    }
-    const ttl = Math.max(60, Math.min(3600, parseInt(String(process.env.MCP_USER_JWT_TTL||'600'),10)||600));
-    const token = jwtSignHS256({ sub: userId, iss:'token-ai' }, secret, ttl);
-    return res.json({ ok:true, token, expires_in: ttl, user_id: userId });
-  } catch (e) {
-    return res.status(500).json({ ok:false, error: e?.message || 'error' });
-  }
-});
+// JWT helpers and /mcp-user-token moved to server/routes/auth.js
 
 // Accept sanitized agent events and broadcast to WS clients
 app.use(express.json({ limit: '512kb' }));
 
-// Lightweight identity middleware: map x-user-token -> ai_app_users via ai_user_tokens
-app.use(async (req, res, next) => {
-  try {
-    const token = String(req.headers['x-user-token'] || '').trim();
-    if (!token) return next();
-    // find or create mapping
-    let map = await prisma.ai_user_tokens.findUnique({ where: { token } }).catch(()=>null);
-    let userId = map?.user_id || null;
-    if (!userId) {
-      const user = await prisma.ai_app_users.create({ data: { name: 'Dev User', role: 'user' } });
-      await prisma.ai_user_tokens.create({ data: { token, user_id: user.id } });
-      userId = user.id;
-    }
-    const user = await prisma.ai_app_users.findUnique({ where: { id: userId } }).catch(()=>null);
-    if (user) req.aiUser = { id: user.id, role: user.role, extUserId: user.ext_user_id || null };
-  } catch {}
-  return next();
-});
+// Register modular routes
+registerIdentityMiddleware(app);
+registerAuthRoutes(app);
+registerRealtimeRoutes(app, { port: PORT, tokenAiDir: TOKEN_AI_DIR });
+registerMcpProxyRoutes(app);
+registerWalletRoutes(app);
 app.post('/events', (req,res) => {
   try {
     // Allow only local agent by default
@@ -279,7 +209,7 @@ function pushVoiceLines(ip, ua, session, items){
 }
 
 // Ingest voice debug lines from browser
-app.post('/realtime/debug-log', (req, res) => {
+if (false) app.post('/realtime/debug-log', (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const ua = req.headers['user-agent'] || '';
@@ -304,7 +234,7 @@ app.post('/realtime/debug-log', (req, res) => {
 });
 
 // Retrieve recent voice debug lines
-app.get('/realtime/debug-log', (req, res) => {
+if (false) app.get('/realtime/debug-log', (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
@@ -325,7 +255,7 @@ app.get('/realtime/debug-log', (req, res) => {
 });
 
 // Clear voice debug buffer (optionally only a session)
-app.delete('/realtime/debug-log', (req, res) => {
+if (false) app.delete('/realtime/debug-log', (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
@@ -348,7 +278,7 @@ app.delete('/realtime/debug-log', (req, res) => {
 });
 
 // Persist voice debug logs to disk (optionally for a single session)
-app.post('/realtime/debug-save', (req, res) => {
+if (false) app.post('/realtime/debug-save', (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
@@ -377,7 +307,7 @@ app.post('/realtime/debug-save', (req, res) => {
 });
 
 // Health summary: aggregate recent debug signals
-app.get('/realtime/health', (req, res) => {
+if (false) app.get('/realtime/health', (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
@@ -429,7 +359,7 @@ app.get('/realtime/health', (req, res) => {
 // Mint ephemeral OpenAI Realtime session tokens for browser WebRTC
 // Security: local callers always allowed. If TOKEN_AI_EVENTS_TOKEN is set,
 // remote callers must send header `x-agent-token: <token>`.
-app.post('/realtime/sessions', async (req, res) => {
+if (false) app.post('/realtime/sessions', async (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
@@ -490,7 +420,7 @@ app.post('/realtime/sessions', async (req, res) => {
 });
 
 // Serve Realtime bootstrap: instructions + tools (for the UI to session.update immediately)
-app.get('/realtime/bootstrap', (req, res) => {
+if (false) app.get('/realtime/bootstrap', (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
@@ -529,16 +459,16 @@ app.get('/realtime/bootstrap', (req, res) => {
 });
 
 // Expose Realtime tools and instructions separately (optional)
-app.get('/realtime/tools', (req, res) => {
+if (false) app.get('/realtime/tools', (req, res) => {
   try { return res.json({ ok:true, tools: getRealtimeTools() }); } catch (e) { return res.status(500).json({ ok:false, error: e?.message || 'error' }); }
 });
 
-app.get('/realtime/instructions', (req, res) => {
+if (false) app.get('/realtime/instructions', (req, res) => {
   try { return res.json({ ok:true, instructions: readRealtimeInstructions() }); } catch (e) { return res.status(500).json({ ok:false, error: e?.message || 'error' }); }
 });
 
 // Execute simple Realtime tool calls from the browser and return results
-app.post('/realtime/tool-call', async (req, res) => {
+if (false) app.post('/realtime/tool-call', async (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
@@ -1212,7 +1142,7 @@ function buildUiOauthMeta(basePath = '') {
   };
 }
 
-app.get('/.well-known/oauth-authorization-server', (req, res) => {
+if (false) app.get('/.well-known/oauth-authorization-server', (req, res) => {
   try {
     try { console.log(`[oauth-meta] UI serve auth metadata ua=${req.headers['user-agent']||''}`); } catch {}
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -1224,7 +1154,7 @@ app.get('/.well-known/oauth-authorization-server', (req, res) => {
   }
 });
 
-app.get('/.well-known/openid-configuration', (req, res) => {
+if (false) app.get('/.well-known/openid-configuration', (req, res) => {
   try {
     try { console.log(`[oauth-meta] UI serve oidc metadata ua=${req.headers['user-agent']||''}`); } catch {}
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -1238,7 +1168,7 @@ app.get('/.well-known/openid-configuration', (req, res) => {
 });
 
 // Mirror OAuth metadata under /mcp-proxy/.well-known for ChatGPT base URLs pointing to the proxy
-app.get('/mcp-proxy/.well-known/oauth-authorization-server', (req, res) => {
+if (false) app.get('/mcp-proxy/.well-known/oauth-authorization-server', (req, res) => {
   try {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
@@ -1249,7 +1179,7 @@ app.get('/mcp-proxy/.well-known/oauth-authorization-server', (req, res) => {
   }
 });
 
-app.get('/mcp-proxy/.well-known/openid-configuration', (req, res) => {
+if (false) app.get('/mcp-proxy/.well-known/openid-configuration', (req, res) => {
   try {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
@@ -1262,7 +1192,7 @@ app.get('/mcp-proxy/.well-known/openid-configuration', (req, res) => {
 });
 
 // Proxy OAuth flows under /mcp-proxy to the local MCP server endpoints
-app.all('/mcp-proxy/authorize', async (req, res) => {
+if (false) app.all('/mcp-proxy/authorize', async (req, res) => {
   try {
     const port = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
     const qs = req.originalUrl.split('?')[1] || '';
@@ -1287,7 +1217,7 @@ app.all('/mcp-proxy/authorize', async (req, res) => {
   }
 });
 
-app.all('/mcp-proxy/token', async (req, res) => {
+if (false) app.all('/mcp-proxy/token', async (req, res) => {
   try {
     const port = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
     const target = `http://127.0.0.1:${port}/mcp/token`;
@@ -1303,7 +1233,7 @@ app.all('/mcp-proxy/token', async (req, res) => {
   }
 });
 
-app.all('/mcp-proxy/userinfo', async (req, res) => {
+if (false) app.all('/mcp-proxy/userinfo', async (req, res) => {
   try {
     const port = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
     const target = `http://127.0.0.1:${port}/mcp/userinfo`;
@@ -1321,7 +1251,7 @@ app.all('/mcp-proxy/userinfo', async (req, res) => {
 });
 
 // OAuth callback helper to satisfy ChatGPT popup flow when using /mcp-proxy base
-app.get('/mcp-proxy/callback', (req, res) => {
+if (false) app.get('/mcp-proxy/callback', (req, res) => {
   try {
     res.setHeader('Content-Type', 'text/html');
     res.end(`<!DOCTYPE html><html><head><title>OAuth Success</title></head><body>
@@ -1334,7 +1264,7 @@ app.get('/mcp-proxy/callback', (req, res) => {
 
 // Public MCP proxy: forwards Realtime MCP traffic to the actual MCP with server-side bearer auth
 // This keeps the MCP token off the client and allows OpenAI to reach a protected MCP endpoint.
-app.all('/mcp-proxy', async (req, res) => {
+if (false) app.all('/mcp-proxy', async (req, res) => {
   try {
     const target = String(process.env.TOKEN_AI_MCP_URL || '').trim();
     if (!target) { return res.status(503).json({ ok:false, error:'mcp_url_not_configured' }); }
@@ -1434,7 +1364,7 @@ app.all('/mcp-proxy', async (req, res) => {
 });
 
 // List managed wallets (labels + public keys) via local DB (no secrets exposed)
-app.get('/managed-wallets', async (req, res) => {
+if (false) app.get('/managed-wallets', async (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
@@ -1454,7 +1384,7 @@ app.get('/managed-wallets', async (req, res) => {
 });
 
 // List aliases for current AI user (optionally filter by wallet_id)
-app.get('/managed-wallets/aliases', async (req, res) => {
+if (false) app.get('/managed-wallets/aliases', async (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
@@ -1474,7 +1404,7 @@ app.get('/managed-wallets/aliases', async (req, res) => {
 });
 
 // Add or update an alias for a wallet (per current AI user)
-app.post('/managed-wallets/aliases', async (req, res) => {
+if (false) app.post('/managed-wallets/aliases', async (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
@@ -1507,7 +1437,7 @@ app.post('/managed-wallets/aliases', async (req, res) => {
 });
 
 // Delete an alias for the current AI user
-app.delete('/managed-wallets/aliases', async (req, res) => {
+if (false) app.delete('/managed-wallets/aliases', async (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
@@ -1579,7 +1509,7 @@ app.get('/dev/wallets/:id/owner', async (req, res) => {
 });
 
 // Get/set runtime default wallet id (does not persist across restarts)
-app.get('/managed-wallets/default', (req, res) => {
+if (false) app.get('/managed-wallets/default', (req, res) => {
   try {
     const send = async () => {
       // Prefer per-user persisted default when available
@@ -1598,7 +1528,7 @@ app.get('/managed-wallets/default', (req, res) => {
   }
 });
 
-app.post('/managed-wallets/default', async (req, res) => {
+if (false) app.post('/managed-wallets/default', async (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';
     const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
