@@ -29,6 +29,7 @@
     "mcp:note:delete": "node token-ai/scripts/mcp-research.mjs note:delete",
     "mcp:finalize": "node token-ai/scripts/mcp-research.mjs finalize",
     "mcp:run:quick": "node token-ai/scripts/mcp-research.mjs run:quick",
+    "test:mcp:proxy": "node token-ai/scripts/test-mcp-proxy.mjs",
     "voice:smoke": "node token-ai/scripts/voice-smoke.mjs",
     "voice:smoke:say": "node token-ai/scripts/voice-smoke.mjs --say 'Dexter smoke test.'",
     "voice:smoke:wav": "node token-ai/scripts/voice-smoke.mjs --wav smoke.wav",
