@@ -70,33 +70,39 @@ export function buildMcpServer(){
   registerWebResearchTools(server);
   registerTradingTools(server);
 
-  // Resources
-  server.registerResource('report://ai-token-analyses/{file}', {
-    template: new ResourceTemplate('report://ai-token-analyses/{file}', 'Analysis report by filename', 'application/json'),
-    handler: async ({ file }) => {
-      if (!/^[A-Za-z0-9._-]+\.json$/.test(file)) throw new Error('Invalid filename');
-      const abs = path.join(REPORTS_DIR, file);
+  // Resources (use new McpServer.resource API)
+  // report://ai-token-analyses/{file}
+  server.resource(
+    'ai-token-analyses:file',
+    new ResourceTemplate('report://ai-token-analyses/{file}', 'Analysis report by filename', 'application/json'),
+    async (_uri, vars) => {
+      const file = vars?.file;
+      if (!/^[A-Za-z0-9._-]+\.json$/.test(String(file))) throw new Error('Invalid filename');
+      const abs = path.join(REPORTS_DIR, String(file));
       if (!fs.existsSync(abs)) throw new Error('File not found');
       const data = fs.readFileSync(abs, 'utf8');
       return { contents: [{ type: 'text', text: data }] };
     }
-  });
+  );
 
-  server.registerResource('report://ai-token-analyses/by-mint/{mint}', {
-    template: new ResourceTemplate('report://ai-token-analyses/by-mint/{mint}', 'Analysis report by mint address', 'application/json'),
-    handler: async ({ mint }) => {
+  // report://ai-token-analyses/by-mint/{mint}
+  server.resource(
+    'ai-token-analyses:by-mint',
+    new ResourceTemplate('report://ai-token-analyses/by-mint/{mint}', 'Analysis report by mint address', 'application/json'),
+    async (_uri, vars) => {
+      const mint = vars?.mint;
       // Find most recent report for this mint
       try {
         const files = (fs.readdirSync(REPORTS_DIR) || [])
           .filter(f => f.endsWith('.json'))
-          .map(f => ({ 
-            file: path.join(REPORTS_DIR, f), 
-            name: f, 
-            mtime: (()=>{ try { return fs.statSync(path.join(REPORTS_DIR, f)).mtimeMs || 0; } catch { return 0; } })() 
+          .map(f => ({
+            file: path.join(REPORTS_DIR, f),
+            name: f,
+            mtime: (()=>{ try { return fs.statSync(path.join(REPORTS_DIR, f)).mtimeMs || 0; } catch { return 0; } })()
           }))
           .sort((a,b)=> b.mtime - a.mtime);
 
-        const m = String(mint).toLowerCase();
+        const m = String(mint || '').toLowerCase();
         for (const f of files) {
           try {
             const raw = fs.readFileSync(f.file, 'utf8');
@@ -110,30 +116,35 @@ export function buildMcpServer(){
       } catch {}
       throw new Error('No report found for mint');
     }
-  });
+  );
 
-  // Research notes resources
-  server.registerResource('research://deep-research/notes/{id}', {
-    template: new ResourceTemplate('research://deep-research/notes/{id}', 'Deep research note by ID', 'application/json'),
-    handler: async ({ id }) => {
+  // research://deep-research/notes/{id}
+  server.resource(
+    'deep-research:note',
+    new ResourceTemplate('research://deep-research/notes/{id}', 'Deep research note by ID', 'application/json'),
+    async (_uri, vars) => {
+      const id = vars?.id;
       const safe = String(id||'').replace(/[^A-Za-z0-9_-]/g,'');
       const file = path.join(RESEARCH_DIR, 'notes', `${safe}.json`);
       if (!fs.existsSync(file)) throw new Error('Note not found');
       const data = fs.readFileSync(file, 'utf8');
       return { contents: [{ type: 'text', text: data }] };
     }
-  });
+  );
 
-  server.registerResource('research://deep-research/{file}', {
-    template: new ResourceTemplate('research://deep-research/{file}', 'Deep research report by filename', 'application/json'),
-    handler: async ({ file }) => {
-      if (!/^[A-Za-z0-9._-]+\.json$/.test(file)) throw new Error('Invalid filename');
-      const abs = path.join(RESEARCH_DIR, 'reports', file);
+  // research://deep-research/{file}
+  server.resource(
+    'deep-research:file',
+    new ResourceTemplate('research://deep-research/{file}', 'Deep research report by filename', 'application/json'),
+    async (_uri, vars) => {
+      const file = vars?.file;
+      if (!/^[A-Za-z0-9._-]+\.json$/.test(String(file))) throw new Error('Invalid filename');
+      const abs = path.join(RESEARCH_DIR, 'reports', String(file));
       if (!fs.existsSync(abs)) throw new Error('File not found');
       const data = fs.readFileSync(abs, 'utf8');
       return { contents: [{ type: 'text', text: data }] };
     }
-  });
+  );
 
   return server;
 }
