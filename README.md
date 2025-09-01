@@ -19,6 +19,7 @@ Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https
 - Environment & Ports
 - Operating (systemd)
 - Database (Prisma → Supabase)
+- Public Deployment Checklist
 - Updating & Deploying
 - Logs & Debugging
 - MCP endpoints
@@ -54,6 +55,8 @@ Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https
   # Optional: Postgres for persistence/trading (temporary – Prisma)
   DATABASE_URL=postgresql://user:pass@localhost:5432/dexter
   ```
+
+  Prefer copying from `env.example` if present: `cp env.example .env`
 
 - First‑time browser install (Chromium only)
   - `cd token-ai && npx playwright install chromium`
@@ -119,6 +122,20 @@ See `AGENTS.md` for contributor guidelines and coding conventions.
   - `cp .env token-ai/.env`
 - Restart services
   - `sudo systemctl restart dexter-ui dexter-mcp`
+
+## Public Deployment Checklist
+- Domain + TLS
+  - NGINX reverse proxy with TLS and HTTP→HTTPS redirect
+  - Proxy `/mcp` and expose `/.well-known/*` for OAuth metadata
+- Processes
+  - systemd units for `dexter-ui` (UI/API/WS) and `dexter-mcp` (MCP HTTP)
+- Secrets & Env
+  - Set `OPENAI_API_KEY`, `TOKEN_AI_MCP_TOKEN`, and (optional) `SUPABASE_URL`/`SUPABASE_ANON_KEY`
+  - Configure OIDC endpoints if not using `TOKEN_AI_DEMO_MODE`
+- Hardening
+  - Limit CORS (`TOKEN_AI_MCP_CORS`) to your origin
+  - Ensure `/mcp-proxy` requires `?userToken` and injects bearer server‑side only
+  - Rotate tokens regularly; never expose private keys/logs
 
 ## Logs & Debugging
 - Journald (live)
