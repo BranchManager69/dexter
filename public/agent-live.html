@@ -2534,7 +2534,7 @@
               const s=data?.step; if (s && panel.setStepState) { panel.setStepState(s,'active'); panel.addStepLog?.(s, `▶ start ${s}`); }
             }
             else if (e==='step_end') {
-              const s=data?.step; if (!s || !panel.setStepState) break;
+              const s=data?.step; if (!s || !panel.setStepState) { /* ignore */ return; }
               if (data && data.skipped) { panel.setStepState(s,'skipped', 0); panel.addStepLog?.(s, `⏭ skipped ${s}`); }
               else { panel.setStepState(s,'done', data.elapsed_ms||0, { ok: (data.ok!==false) }); panel.addStepLog?.(s, `✓ end ${s}${data.elapsed_ms!=null?` (${data.elapsed_ms}ms)`:''}${data.ok===false?' failed':''}`); }
             }
