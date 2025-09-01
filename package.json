@@ -13,7 +13,7 @@
     "mcp:http:oauth": "node token-ai/mcp/http-server-oauth.mjs",
     "status": "node token-ai/scripts/status.mjs",
     "test:mcp": "node token-ai/scripts/test-mcp-all.mjs",
-    "test:mcp:http": "node token-ai/scripts/test-mcp-http.mjs",
+    "test:mcp:http": "TOKEN_AI_MCP_PORT=3930 TOKEN_AI_MCP_URL=http://localhost:3930/mcp node token-ai/scripts/test-mcp-http.mjs",
     "mcp:balances": "node token-ai/scripts/mcp-trade.mjs balances",
     "mcp:buy": "node token-ai/scripts/mcp-trade.mjs buy",
     "mcp:sell": "node token-ai/scripts/mcp-trade.mjs sell",

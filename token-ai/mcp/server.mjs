@@ -7,10 +7,13 @@ import { buildMcpServer } from './common.mjs';
 import dotenv from 'dotenv';
 import path from 'node:path';
 
-// Ensure env vars from repo .env are loaded when launched outside PM2
+// Ensure env vars are loaded from Dexter repo root and local token-ai folder
 try {
-  const envPath = path.resolve('/home/branchmanager/websites/degenduel/.env');
-  dotenv.config({ path: envPath, quiet: true });
+  const HERE = path.resolve(path.dirname(new URL(import.meta.url).pathname));
+  const TA_ROOT = path.resolve(HERE, '..');
+  const REPO_ROOT = path.resolve(TA_ROOT, '..');
+  dotenv.config({ path: path.join(REPO_ROOT, '.env') });
+  dotenv.config({ path: path.join(TA_ROOT, '.env') });
 } catch {}
 
 const server = buildMcpServer();

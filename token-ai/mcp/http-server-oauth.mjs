@@ -9,10 +9,13 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import dotenv from 'dotenv';
 import path from 'node:path';
 
-// Load monorepo-level .env if present (parity with other servers)
+// Load env from repo root (Dexter) and local token-ai folder
 try {
-  const envPath = path.resolve('/home/branchmanager/websites/degenduel/.env');
-  dotenv.config({ path: envPath });
+  const HERE = path.resolve(path.dirname(new URL(import.meta.url).pathname));
+  const TA_ROOT = path.resolve(HERE, '..');
+  const REPO_ROOT = path.resolve(TA_ROOT, '..');
+  dotenv.config({ path: path.join(REPO_ROOT, '.env') });
+  dotenv.config({ path: path.join(TA_ROOT, '.env') });
 } catch {}
 
 const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
