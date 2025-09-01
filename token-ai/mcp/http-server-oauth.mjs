@@ -38,6 +38,19 @@ const OIDC_CLIENT_ID = process.env.TOKEN_AI_OIDC_CLIENT_ID || '';
 const OIDC_IDENTITY_CLAIM = process.env.TOKEN_AI_OIDC_IDENTITY_CLAIM || 'sub';
 const OIDC_ALLOWED_USERS = (process.env.TOKEN_AI_OIDC_ALLOWED_USERS || '').split(',').filter(Boolean);
 
+// Allowlist of known safe public redirect URIs (in addition to registered clients)
+// Defaults include Claude and ChatGPT connector callback URLs. Can be extended via env.
+const DEFAULT_ALLOWED_REDIRECTS = [
+  'https://claude.ai/api/mcp/auth_callback',
+  'https://chatgpt.com/connector_platform_oauth_redirect',
+  'https://chat.openai.com/connector_platform_oauth_redirect'
+];
+const ENV_ALLOWED_REDIRECTS = (process.env.TOKEN_AI_MCP_ALLOWED_REDIRECTS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+const ALLOWED_REDIRECTS = Array.from(new Set([...DEFAULT_ALLOWED_REDIRECTS, ...ENV_ALLOWED_REDIRECTS]));
+
 // Deprecated GitHub fallback (used only if explicitly configured)
 const GITHUB_CLIENT_ID = process.env.TOKEN_AI_MCP_GITHUB_CLIENT_ID || '';
 const GITHUB_CLIENT_SECRET = process.env.TOKEN_AI_MCP_GITHUB_CLIENT_SECRET || '';
@@ -460,15 +473,15 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       
-      // Validate redirect URI for registered clients
+      // Validate redirect URI for registered clients or allowlisted public redirects
       const claudeCallbackUri = 'https://claude.ai/api/mcp/auth_callback';
       const registeredClient = registeredClients.get(clientId);
       const base = effectiveBaseUrl(req);
       const selfCallback = `${base}/callback`;
       
-      // Allow Claude's callback URI and our own /callback even for unregistered clients (for setup/self-tests)
+      // Allow our own /callback, localhost, and known public connector redirects (Claude/ChatGPT) even for unregistered clients
       const isValidRedirect = (
-        redirectUri === claudeCallbackUri || 
+        ALLOWED_REDIRECTS.includes(redirectUri) ||
         redirectUri === selfCallback ||
         redirectUri.startsWith('http://localhost') ||
         (registeredClient && registeredClient.redirect_uris.includes(redirectUri))
@@ -676,13 +689,10 @@ const server = http.createServer(async (req, res) => {
       const clientId = randomToken('cid');
       const clientSecret = randomToken('cs');
       
-      // Extract and validate redirect URIs
-      const redirectUris = body.redirect_uris || [];
-      
-      // Accept Claude's callback URI
-      const claudeCallbackUri = 'https://claude.ai/api/mcp/auth_callback';
-      if (!redirectUris.includes(claudeCallbackUri)) {
-        redirectUris.push(claudeCallbackUri);
+      // Extract and normalize redirect URIs, augment with known safe public redirects
+      const redirectUris = Array.isArray(body.redirect_uris) ? [...body.redirect_uris] : [];
+      for (const uri of ALLOWED_REDIRECTS) {
+        if (!redirectUris.includes(uri)) redirectUris.push(uri);
       }
       
       // Store client registration
