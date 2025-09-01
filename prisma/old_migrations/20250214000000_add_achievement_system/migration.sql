@@ -1,0 +1,1 @@
+-- This migration file was recreated as a dummy file because its changes are already present in the database.

@@ -2,7 +2,6 @@
 
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { PublicKey } from '@solana/web3.js';
@@ -109,6 +108,8 @@ export async function extract_website_content(url, opts = {}) {
 
   // Playwright path
   try {
+    let chromium;
+    try { ({ chromium } = await import('playwright')); } catch (e) { throw e; }
     const launchedHere = !options.browser;
     const browser = options.browser || await chromium.launch({ headless: options.headless });
     const context = await browser.newContext();
@@ -167,4 +168,3 @@ export function find_social_links_in_site(extractedSite) {
   pushSet('reddit', sl.reddit);
   return canonical;
 }
-

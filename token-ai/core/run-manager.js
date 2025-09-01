@@ -67,7 +67,8 @@ export function spawnAnalyzer(kind, args, options = {}){
     env.NODE_OPTIONS = existing + `--max-old-space-size=${CHILD_MAX_MB}`;
   }
 
-  const child = spawn('node', [entryPath, ...(Array.isArray(args) ? args : [])], {
+  const nodeBin = process.execPath || 'node';
+  const child = spawn(nodeBin, [entryPath, ...(Array.isArray(args) ? args : [])], {
     cwd: cwd || path.resolve(TOKEN_AI_DIR, '..'),
     env,
     stdio: ['ignore', 'pipe', 'pipe']
@@ -109,4 +110,3 @@ export function getRunLogs(pid, limit){
   const lim = Math.max(1, Math.min(LOGS_PER_RUN_LIMIT, Number(limit)||LOGS_PER_RUN_LIMIT));
   return { pid: Number(pid), mint: rec.mint || null, logs: rec.logs.slice(-lim) };
 }
-

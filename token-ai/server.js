@@ -53,8 +53,8 @@ const VOICE_DIR = path.join(TOKEN_AI_DIR, 'reports', 'voice-debug');
 let RUNTIME_DEFAULT_WALLET_ID = process.env.TOKEN_AI_DEFAULT_WALLET_ID || '';
 let DEV_X_USER_TOKEN = '';
 
-// Serve static live pages from token-ai/public
-const PUB_DIR = path.join(TOKEN_AI_DIR, 'public');
+// Serve static live pages from the repo's root public directory
+const PUB_DIR = path.resolve(TOKEN_AI_DIR, '..', 'public');
 app.use('/', express.static(PUB_DIR));
 
 // Quick landing links

@@ -1,10 +1,10 @@
 // token-ai/socials/tools/twitter.js
 
-import { chromium } from 'playwright';
 import { scrapeTwitter } from '../twitter/scrape.js';
 
 async function getContext(existingContext, storageStatePath) {
   if (existingContext) return { context: existingContext, browser: null };
+  const { chromium } = await import('playwright');
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ storageState: storageStatePath && typeof storageStatePath === 'string' ? storageStatePath : undefined });
   return { context, browser };
@@ -94,4 +94,3 @@ export async function get_twitter_community_members({ token, twitterUrl, context
     if (browser) await browser.close();
   }
 }
-
