@@ -13,7 +13,7 @@
     "mcp:http:oauth": "node token-ai/mcp/http-server-oauth.mjs",
     "status": "node token-ai/scripts/status.mjs",
     "test:mcp": "node token-ai/scripts/test-mcp-all.mjs",
-    "test:mcp:http": "TOKEN_AI_MCP_PORT=3930 TOKEN_AI_MCP_URL=http://localhost:3930/mcp node token-ai/scripts/test-mcp-http.mjs",
+    "test:mcp:http": "TOKEN_AI_MCP_PORT=3930 TOKEN_AI_MCP_URL=http://localhost:3930/mcp DOTENV_CONFIG_PATH=.env node -r dotenv/config token-ai/scripts/test-mcp-http.mjs",
     "mcp:balances": "node token-ai/scripts/mcp-trade.mjs balances",
     "mcp:buy": "node token-ai/scripts/mcp-trade.mjs buy",
     "mcp:sell": "node token-ai/scripts/mcp-trade.mjs sell",
@@ -34,5 +34,19 @@
     "voice:smoke:wav": "node token-ai/scripts/voice-smoke.mjs --wav smoke.wav",
     "voice:smoke:wav:ts": "node token-ai/scripts/voice-smoke.mjs --wav",
     "voice:smoke:say:wav": "node token-ai/scripts/voice-smoke.mjs --say 'Dexter smoke test.' --wav"
+  },
+  "dependencies": {
+    "@logtail/node": "^0.3.3",
+    "@logtail/winston": "^0.4.7",
+    "chalk": "^5.3.0",
+    "dotenv": "^17.2.1",
+    "node-fetch": "^3.3.2",
+    "node-ipinfo": "^3.4.1",
+    "winston": "^3.13.0",
+    "winston-daily-rotate-file": "^4.7.1"
+  },
+  "devDependencies": {
+    "@prisma/client": "^6.7.0",
+    "prisma": "^6.7.0"
   }
 }
