@@ -411,6 +411,29 @@ const server = http.createServer(async (req, res) => {
     
     const url = new URL(req.url || '', `http://${req.headers.host}`);
     
+    // Health endpoint (JSON)
+    if (url.pathname === '/mcp/health' || url.pathname === '/health') {
+      try { console.log(`[mcp] health check ua=${req?.headers?.['user-agent']||''}`); } catch {}
+      const base = effectiveBaseUrl(req);
+      const prov = getProviderConfig(req);
+      const body = {
+        ok: true,
+        status: 'ok',
+        oauth: !!OAUTH_ENABLED,
+        issuer: prov?.issuer || base,
+        base,
+        port: PORT,
+        sessions: {
+          transports: Array.isArray(transports) ? transports.length : (typeof transports?.size === 'number' ? transports.size : undefined),
+          servers: typeof servers?.size === 'number' ? servers.size : undefined
+        },
+        timestamp: new Date().toISOString()
+      };
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control':'no-store' });
+      res.end(JSON.stringify(body));
+      return;
+    }
+
     // Serve OAuth metadata
     if (OAUTH_ENABLED && serveOAuthMetadata(url.pathname, res, req)) {
       return;

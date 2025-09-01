@@ -11,7 +11,7 @@ A standalone deployment of the Token‑AI UI + Analyzer + OAuth‑enabled MCP st
 
 Use this README for day‑to‑day ops. It supersedes any old PM2‑based notes.
 
-Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https://dexter.cash/agent-dashboard.html) · [MCP Metadata](https://dexter.cash/.well-known/oauth-authorization-server)
+Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https://dexter.cash/agent-dashboard.html) · [MCP Health](https://dexter.cash/mcp/health)
 
 ## Contents
 - What’s here
@@ -43,6 +43,7 @@ Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https
 - Health checks (HTTPS via NGINX)
   - UI: `https://dexter.cash/agent-live.html`
   - Dashboard: `https://dexter.cash/agent-dashboard.html`
+  - MCP Health: `https://dexter.cash/mcp/health`
   - MCP Metadata: `https://dexter.cash/.well-known/oauth-authorization-server`
   - MCP Stream (curl): `curl -i -H "Accept: text/event-stream" https://dexter.cash/mcp`
 
@@ -85,6 +86,7 @@ Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https
 
 ## MCP endpoints
 - Public base (proxied): `https://dexter.cash/mcp`
+- Health: `GET /mcp/health` → basic JSON status (issuer, oauth, sessions)
 - OAuth OIDC metadata: `/.well-known/oauth-authorization-server` and `/.well-known/openid-configuration`
 - Stream check: `GET /mcp` with `Accept: text/event-stream` should return 200 and stream events
 
