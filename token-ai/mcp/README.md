@@ -7,6 +7,8 @@ This folder contains the Model Context Protocol (MCP) servers for Token‑AI. Th
 - Stdio server (optional/local): `mcp/server.mjs`
 - Shared tool registration: `mcp/common.mjs`
 
+Legacy note: The old ChatGPT-specific SSE server (`mcp/http-server-chatgpt.mjs`) is archived under `mcp/_archive/` and no longer used in Dexter.
+
 ## Quick Start
 
 - Install deps once in this repo: `npm install`

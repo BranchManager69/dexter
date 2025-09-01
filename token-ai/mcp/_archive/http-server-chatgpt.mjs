@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-// MCP Server for ChatGPT with SSE support
+// DEPRECATED: Legacy MCP Server for ChatGPT with SSE support
+// Archived under token-ai/mcp/_archive/. Dexter uses http-server-oauth.mjs on /mcp for both
+// JSON and streaming (Streamable HTTP). This file is kept for reference only.
 
 import http from 'node:http';
 import https from 'node:https';

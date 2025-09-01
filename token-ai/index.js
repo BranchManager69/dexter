@@ -617,6 +617,31 @@ async function analyzeWithGPT5Agent(tokenAddress) {
       stream: true
     });
 
+    // Event normalization function to handle both function_call and mcp_call events
+    function normalizeEventType(event) {
+      // MCP call events -> function call events
+      if (event.type === 'response.mcp_call_arguments.delta' || 
+          event.type === 'response.mcp_call.arguments.delta') {
+        return { ...event, type: 'response.function_call_arguments.delta', callType: 'mcp' };
+      }
+      if (event.type === 'response.output_item.added' && event.item?.type === 'mcp_call') {
+        return { 
+          ...event, 
+          item: { ...event.item, type: 'function_call' },
+          callType: 'mcp'
+        };
+      }
+      if (event.type === 'response.output_item.done' && event.item?.type === 'mcp_call') {
+        return { 
+          ...event, 
+          item: { ...event.item, type: 'function_call' },
+          callType: 'mcp'
+        };
+      }
+      // Pass through regular events
+      return event;
+    }
+
     // Collect streamed items
     let collectedText = '';
     const collectedCalls = [];
@@ -656,7 +681,10 @@ async function analyzeWithGPT5Agent(tokenAddress) {
       const out = streamBuf; streamBuf = ''; writeStreamChunk(out);
     };
     const scheduleFlush = () => { try { if (streamTimer) clearTimeout(streamTimer); } catch {}; streamTimer = setTimeout(() => flushStreamBuf(true), STREAM_MAX_MS); };
-    for await (const event of openaiStream) {
+    for await (const rawEvent of openaiStream) {
+      // Normalize event types to handle both function_call and mcp_call uniformly
+      const event = normalizeEventType(rawEvent);
+      
       if (event.type === 'response.created') {
         responseId = event.response?.id || responseId;
         // For the initial stream, this response is also the source of the function calls
@@ -678,11 +706,12 @@ async function analyzeWithGPT5Agent(tokenAddress) {
           scheduleFlush();
         }
       } else if (event.type === 'response.output_item.added' && event.item?.type === 'function_call') {
-        // Start of a function call
+        // Start of a function call (could be regular function_call or normalized mcp_call)
         currentCallId = event.item.call_id;
         currentCallName = event.item.name;
         currentArgs = '';
-        if (!QUIET_STREAM) console.log(chalk.yellow(`   • tool_call start: ${currentCallName} (${currentCallId})`));
+        const callLabel = event.callType === 'mcp' ? 'mcp_call' : 'tool_call';
+        if (!QUIET_STREAM) console.log(chalk.yellow(`   • ${callLabel} start: ${currentCallName} (${currentCallId})`));
         try {
           const p={ mint: tokenAddress, at: new Date().toISOString(), name: currentCallName };
           agentEvents.toolCall(p); postAgent(AGENT_EVENTS.TOOL_CALL, p);
@@ -701,7 +730,8 @@ async function analyzeWithGPT5Agent(tokenAddress) {
           name: currentCallName,
           arguments: currentArgs || event.item.arguments || '{}'
         });
-        if (!QUIET_STREAM) console.log(chalk.yellow(`   • tool_call done: ${currentCallName} (${currentCallId})`));
+        const callLabel = event.callType === 'mcp' ? 'mcp_call' : 'tool_call';
+        if (!QUIET_STREAM) console.log(chalk.yellow(`   • ${callLabel} done: ${currentCallName} (${currentCallId})`));
         currentCallId = null;
         currentCallName = null;
         currentArgs = '';
@@ -1154,7 +1184,10 @@ async function analyzeWithGPT5Agent(tokenAddress) {
         // Try to stream the response from the model
         try {
           const contStream = await openai.responses.create(contPayload);
-          for await (const ev of contStream) {
+          for await (const rawEv of contStream) {
+            // Normalize event types to handle both function_call and mcp_call uniformly
+            const ev = normalizeEventType(rawEv);
+            
             // Capture the response ID
             if (ev.type === 'response.created') {
               contRespId = ev.response?.id || contRespId;
@@ -1174,7 +1207,8 @@ async function analyzeWithGPT5Agent(tokenAddress) {
             // Capture the function call start
             else if (ev.type === 'response.output_item.added' && ev.item?.type === 'function_call') {
               fcIdC = ev.item.call_id; fcNameC = ev.item.name; fcArgsC='';
-              if (!QUIET_STREAM) console.log(chalk.yellow(`   • tool_call(start) ${fcNameC} (${fcIdC})`));
+              const callLabel = ev.callType === 'mcp' ? 'mcp_call' : 'tool_call';
+              if (!QUIET_STREAM) console.log(chalk.yellow(`   • ${callLabel}(start) ${fcNameC} (${fcIdC})`));
             } 
             // Capture the function call arguments delta
             else if (ev.type === 'response.function_call_arguments.delta') {
@@ -1183,7 +1217,8 @@ async function analyzeWithGPT5Agent(tokenAddress) {
             // Capture the function call done
             else if (ev.type === 'response.output_item.done' && ev.item?.type === 'function_call') {
               contCalls.push({ type:'function_call', call_id: fcIdC, name: fcNameC, arguments: fcArgsC || ev.item.arguments || '{}' });
-              if (!QUIET_STREAM) console.log(chalk.yellow(`   • tool_call(done) ${fcNameC} (${fcIdC})`));
+              const callLabel2 = ev.callType === 'mcp' ? 'mcp_call' : 'tool_call';
+              if (!QUIET_STREAM) console.log(chalk.yellow(`   • ${callLabel2}(done) ${fcNameC} (${fcIdC})`));
               fcIdC=null; fcNameC=null; fcArgsC='';
             }
           }

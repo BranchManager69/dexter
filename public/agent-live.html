@@ -208,6 +208,7 @@
           <button id="vdHealth" class="vd-btn" style="display:block;width:100%;text-align:left;margin-bottom:4px">Health</button>
           <button id="vdSend" class="vd-btn" style="display:block;width:100%;text-align:left;margin-bottom:4px">Send Logs</button>
           <button id="vdVerbose" class="vd-btn" data-on="1" style="display:block;width:100%;text-align:left;margin-bottom:4px">Verbose: On</button>
+          <button id="vdTestCapture" class="vd-btn" style="display:block;width:100%;text-align:left;margin-bottom:4px">Test Capture</button>
           <button id="vdCopy" class="vd-btn" style="display:block;width:100%;text-align:left">Copy</button>
         </div>
       </div>
@@ -827,6 +828,57 @@
         document.getElementById('vdClear').addEventListener('click', ()=> vd.clear());
         document.getElementById('vdCopy').addEventListener('click', ()=> vd.copy());
         document.getElementById('vdVerbose').addEventListener('click', (e)=>{ vd.verbose = !vd.verbose; e.currentTarget.setAttribute('data-on', vd.verbose? '1':'0'); e.currentTarget.textContent = 'Verbose: ' + (vd.verbose?'On':'Off'); vd.render(); });
+        
+        // Test Capture button - captures essential diagnostic info
+        document.getElementById('vdTestCapture').addEventListener('click', ()=>{
+          try {
+            const testData = {
+              timestamp: new Date().toISOString(),
+              connected: voice?.connected || false,
+              muted: voice?.muted || false,
+              sessionId: voice?.dc?.id || null,
+              logCount: vd?.logs?.length || 0,
+              lastTools: [],
+              lastTranscript: null,
+              lastError: null
+            };
+            
+            // Get last 5 tool calls
+            for (let i = vd.logs.length - 1; i >= 0 && testData.lastTools.length < 5; i--) {
+              const item = vd.logs[i];
+              if (item.cat === 'info' && (item.msg.includes('tool') || item.msg.includes('MCP'))) {
+                testData.lastTools.push({
+                  msg: item.msg,
+                  data: item.data,
+                  time: item.time
+                });
+              }
+              if (!testData.lastTranscript && item.cat === 'transcript') {
+                testData.lastTranscript = item.msg;
+              }
+              if (!testData.lastError && item.cat === 'error') {
+                testData.lastError = { msg: item.msg, data: item.data };
+              }
+            }
+            
+            // Create output
+            const output = JSON.stringify(testData, null, 2);
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(output).then(
+              () => {
+                vd.add('info', 'Test capture copied to clipboard');
+                console.log('Test Capture:', testData);
+              },
+              () => {
+                vd.add('error', 'Failed to copy test capture');
+                console.log('Test Capture (manual copy):', output);
+              }
+            );
+          } catch (e) {
+            vd.add('error', 'Test capture failed', { error: String(e?.message || e) });
+          }
+        });
         document.getElementById('vdStop').addEventListener('click', ()=> stopVoice());
         document.getElementById('vdMute').addEventListener('click', (e)=>{
           try { 
@@ -969,13 +1021,41 @@
         return false;
       }
       
+      // Event normalization function to handle both function_call and mcp_call events
+      function normalizeToolEvent(msg) {
+        if (!msg) return msg;
+        
+        // MCP call events -> function call events
+        if (msg.type === 'response.mcp_call.created') {
+          return { ...msg, type: 'response.function_call.created', callType: 'mcp' };
+        }
+        if (msg.type === 'response.mcp_call.arguments.delta' || 
+            msg.type === 'response.mcp_call_arguments.delta') {
+          return { ...msg, type: 'response.function_call.arguments.delta', callType: 'mcp' };
+        }
+        if (msg.type === 'response.mcp_call.completed' || 
+            msg.type === 'response.mcp_call.done') {
+          return { ...msg, type: 'response.function_call.completed', callType: 'mcp' };
+        }
+        
+        // Pass through regular events
+        return msg;
+      }
+      
       // Handle tool frames
       async function handleToolFrames(msg){
         try {
           if (!msg || !msg.type) return;
+          
+          // Normalize event types to handle both function_call and mcp_call uniformly
+          msg = normalizeToolEvent(msg);
+          
           if (msg.type === 'response.function_call.created') {
             const id = msg.id || msg.call_id || (msg.item?.id) || null; const name = msg.name || msg.function?.name || msg.item?.name || null;
-            if (!id || !name) return; toolBuf.set(id, { name, args:'' }); vd.add('info','tool created', { id, name });
+            if (!id || !name) return; 
+            toolBuf.set(id, { name, args:'' }); 
+            const callLabel = msg.callType === 'mcp' ? 'MCP tool' : 'tool';
+            vd.add('info',`${callLabel} created`, { id, name });
             return;
           }
           if (msg.type === 'response.function_call.arguments.delta') {
@@ -984,7 +1064,8 @@
           if (msg.type === 'response.function_call.completed') {
             const id = msg.id || msg.call_id || (msg.item?.id) || null; if (!id) return; const rec = toolBuf.get(id); if (!rec) return; toolBuf.delete(id);
             let argsObj = {}; try { argsObj = rec.args ? JSON.parse(rec.args) : {}; } catch { argsObj = {}; }
-            vd.add('info','tool completed', { id, name: rec.name, args: argsObj });
+            const callLabel = msg.callType === 'mcp' ? 'MCP tool' : 'tool';
+            vd.add('info',`${callLabel} completed`, { id, name: rec.name, args: argsObj });
             // Call server tool endpoint
             const hdr = { 'content-type':'application/json' }; try { if (window.AGENT_TOKEN) hdr['x-agent-token']=String(window.AGENT_TOKEN); if (window.X_USER_TOKEN) hdr['x-user-token']=String(window.X_USER_TOKEN); } catch {}
             let result = null;

@@ -45,7 +45,7 @@
   - `tg-daemon`: runs `token-ai/socials/telegram/session-daemon.js` (SOCKS5 MTProto helper for Telegram tooling).
   - `token-ai-mcp-http`: runs `token-ai/mcp/http-server.mjs` (full MCP tool server over HTTP/WS). Port via `TOKEN_AI_MCP_PORT` (default 3928).
   - `token-ai-mcp-stdio`: runs `token-ai/mcp/server.mjs` (stdio MCP, rarely needed under PM2).
-  - Optional (not running by default): `mcp/http-server-chatgpt.mjs` exposes a minimal SSE‑style endpoint for ChatGPT. If you need it, run it under a separate name/port (e.g., `token-ai-mcp-http-sse` on 3929) to avoid clashing with the main server.
+- Legacy (archived): `mcp/_archive/http-server-chatgpt.mjs` was an SSE-only variant. Dexter standardizes on `mcp/http-server-oauth.mjs` at `/mcp` (Streamable HTTP) and does not require a separate SSE process.
 - Parent working directory: PM2 `cwd` is the monorepo root; scripts reference `token-ai/...` paths. External deps like `../config/prisma.js` resolve from the parent.
 - Common PM2 commands:
   - Reload UI: `pm2 reload ai-ui`

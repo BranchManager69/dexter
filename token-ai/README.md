@@ -505,7 +505,7 @@ Output locations:
   - `tg-daemon`: runs `token-ai/socials/telegram/session-daemon.js`.
 - `token-ai-mcp-http`: runs the OAuth MCP server at `mcp/http-server-oauth.mjs` (unified `/mcp`).
   - Fallback (bearer‑only): `mcp/http-server.mjs` if you don’t need OAuth.
-  - Optional SSE variant for ChatGPT lives at `mcp/http-server-chatgpt.mjs` if you run a separate SSE bridge.
+- Legacy SSE variant for ChatGPT is archived at `mcp/_archive/http-server-chatgpt.mjs`. Dexter uses `mcp/http-server-oauth.mjs` under `/mcp` for both JSON and streaming.
   - ChatGPT connector setup: see `docs/mcp-connector-setup.md` (unified `/mcp`).
 - Common ops: `pm2 reload ai-ui`, `pm2 restart tg-daemon --update-env`, `pm2 status`, `pm2 logs <name> --lines 100`.
 - Details and environment variables: see `AGENTS.md` → “PM2 + Monorepo Deployment”.
