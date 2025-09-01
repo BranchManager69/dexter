@@ -1,0 +1,5 @@
+# Keep private analyzer fragment out of VCS
+system.private.md
+
+# Optional private overrides
+overrides/section.*.private.md

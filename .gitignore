@@ -1,0 +1,51 @@
+# Secrets
+.env
+.token
+*.pem
+
+# Node
+node_modules/
+**/node_modules/
+
+# Logs and runtime
+logs/
+**/logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build/cache
+.DS_Store
+.vscode/
+coverage/
+dist/
+.tmp/
+
+# Token-AI runtime artifacts
+/token-ai/reports/
+/token-ai/debug/
+/token-ai/logs/
+
+# Parent symlinks (runtime only)
+/config/
+/utils/
+
+# Misc
+*.swp
+# Telegram sessions (sensitive)
+/token-ai/socials/telegram/*.session
+/token-ai/socials/telegram/*.session.json
+/token-ai/socials/telegram/session*
+
+# Supabase CLI temp
+/token-ai/**/.temp/**
+/token-ai/**/supabase/**/.temp/**
+# Telegram sessions (sensitive)
+/token-ai/socials/telegram/*.session
+/token-ai/socials/telegram/*.session.json
+/token-ai/socials/telegram/session*
+
+# Supabase CLI temp
+/token-ai/**/.temp/**
+/token-ai/**/supabase/**/.temp/**

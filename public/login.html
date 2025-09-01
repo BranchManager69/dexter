@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Login • Token‑AI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 20px; color: #ddd; background: #111; }
+      .box { max-width: 480px; margin: 40px auto; padding: 24px; background: #1b1b1b; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+      input, button { width: 100%; padding: 10px 12px; margin: 8px 0; border-radius: 6px; border: 1px solid #333; background:#0f0f0f; color:#eee; }
+      button { background: #2a77ff; border-color: #2a77ff; cursor: pointer; }
+      .row { display:flex; gap:8px; }
+      .row > * { flex: 1; }
+      small { color: #aaa; }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <h2>Sign in (Magic Link)</h2>
+      <p><small>Enter your email and we’ll send a one‑time link to sign you in.</small></p>
+      <div class="row"><input id="email" type="email" placeholder="Email" /></div>
+      <button id="sendLink">Send magic link</button>
+      <button id="logout" style="background:#444;border-color:#444">Sign out</button>
+      <div id="status"><small>…</small></div>
+      <p><a href="/agent-live.html">Back to Agent</a></p>
+    </div>
+    <script>
+      async function getConfig(){ try { const r=await fetch('/auth/config'); const j=await r.json(); return j?.ok? j: null; } catch { return null; } }
+      function setStatus(t){ document.getElementById('status').innerHTML = `<small>${t}</small>`; }
+      (async function(){
+        setStatus('Loading auth…');
+        const cfg = await getConfig();
+        if (!cfg || !cfg.supabaseUrl || !cfg.supabaseAnonKey) { setStatus('Auth not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY.'); return; }
+        const el = document.createElement('script');
+        el.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+        el.async = true; el.onload = async () => {
+          const sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { persistSession:true, autoRefreshToken:true } });
+          async function refresh(){ const { data } = await sb.auth.getSession(); const s = data?.session; setStatus(s ? `Logged in as ${s.user?.email||s.user?.id}` : 'Logged out'); }
+          document.getElementById('sendLink').onclick = async () => {
+            const email = document.getElementById('email').value.trim();
+            if (!email) { setStatus('Enter your email.'); return; }
+            setStatus('Sending magic link…');
+            const redir = location.origin + '/login.html';
+            const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: redir, shouldCreateUser: true } });
+            if (error) { setStatus('Could not send link: '+error.message); return; }
+            setStatus('Check your email for the sign‑in link.');
+          };
+          document.getElementById('logout').onclick = async () => { await sb.auth.signOut(); await refresh(); };
+          await refresh();
+        };
+        document.head.appendChild(el);
+      })();
+    </script>
+  </body>
+  </html>

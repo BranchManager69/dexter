@@ -1,0 +1,3122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>input,select,textarea,button{font-size:16px}</style>
+  <title>Dexter • Live Trencher</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <script src="/agent-env.js?v=1"></script>
+  <style>
+    html { max-width:100%; overflow-x:hidden; }
+    body { max-width:100%; }
+    header, .panels, .panel { max-width:100%; box-sizing:border-box; }
+    :root { color-scheme: dark; }
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:#0b0c10; color:#e6edf3; }
+    header { position: sticky; top: 0; z-index: 1001; padding: 12px 16px; background: #11131a; border-bottom:1px solid #222633; display:flex; align-items:center; gap:16px; }
+    .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; border:1px solid #2c3242; color:#9fb2c8; }
+    .row { display:flex; gap: 12px; align-items:center; flex-wrap: wrap; }
+    .terminal { padding: 16px; height: calc(100vh - 120px); overflow: auto; line-height:1.45; }
+    .line { white-space: pre-wrap; word-break: break-word; }
+    .t-grey { color:#98a6b3; }
+    .t-yellow { color:#f2cc60; }
+    .t-green { color:#7ce38b; }
+    .t-red { color:#ff7b7b; }
+    .panel { display:flex; gap: 12px; align-items:center; }
+    .meter { height: 8px; width: 120px; background:#1a1e27; border:1px solid #2c3242; border-radius: 4px; overflow:hidden; }
+    .meter > div { height:100%; background:#6dd5fa; }
+    .sticky { position: sticky; top: 48px; z-index: 1000; background:#0b0c10; padding:6px 16px; border-bottom:1px solid #1a1e27; }
+    .dim { opacity: 0.8; }
+    /* Sticky status bar summary */
+    #now.statusbar { display:flex; align-items:center; gap:8px; padding:6px 16px; font-size:12px; white-space:nowrap; text-overflow:ellipsis; z-index:500; }
+    #now .conn { padding:2px 8px; border-radius:999px; border:1px solid #2c3242; background:#121521; }
+    #now .conn.ok { color:#79e08f; border-color:#2a4a36; background:#0f1612; }
+    #now .conn.warn { color:#f2cc60; border-color:#4a3f2a; background:#15130f; }
+    #now .conn.bad { color:#ff7b7b; border-color:#5a2a30; background:#1a1112; }
+    #now .spacer { flex:1 1 auto; }
+    #now .last { color:#9fb2c8; display:inline-flex; gap:6px; align-items:center; }
+    #now .last .txt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70vw; display:inline-block; }
+    @media (max-width: 600px){ #now .last .txt { max-width: 50vw; } }
+    #now .ago { opacity:.7; font-size:11px; }
+    /* Animations */
+    @keyframes nowFlash { from { opacity:0; transform: translateY(-4px);} to { opacity:1; transform: translateY(0);} }
+    @keyframes nowFadeOut { from { opacity:1; transform: translateY(0);} to { opacity:0; transform: translateY(-4px);} }
+    #now .last.flash { animation: nowFlash .25s ease; }
+    #now .last.fadeout { animation: nowFadeOut .25s ease forwards; }
+    @keyframes connPulse { 0%{ box-shadow:0 0 0 0 rgba(121,224,143,.3);} 100%{ box-shadow:0 0 0 6px rgba(121,224,143,0);} }
+    @keyframes connPulseWarn { 0%{ box-shadow:0 0 0 0 rgba(242,204,96,.3);} 100%{ box-shadow:0 0 0 6px rgba(242,204,96,0);} }
+    @keyframes connPulseBad { 0%{ box-shadow:0 0 0 0 rgba(255,123,123,.3);} 100%{ box-shadow:0 0 0 6px rgba(255,123,123,0);} }
+    #now .conn.pulse-ok, #connbar.pulse-ok { animation: connPulse .5s ease; }
+    #now .conn.pulse-warn, #connbar.pulse-warn { animation: connPulseWarn .5s ease; }
+    #now .conn.pulse-bad, #connbar.pulse-bad { animation: connPulseBad .5s ease; }
+    /* Header connection badge colors */
+    #connbar.ok { color:#79e08f; border-color:#2a4a36; background:#0f1612; }
+    #connbar.warn { color:#f2cc60; border-color:#4a3f2a; background:#15130f; }
+    #connbar.bad { color:#ff7b7b; border-color:#5a2a30; background:#1a1112; }
+    a { color:#8ab4ff; text-decoration:none; }
+    /* minimal */
+    /* Voice banner */
+    #voiceBanner { display:none; margin:8px 16px; padding:6px 10px; border:1px solid #5a4a1a; border-radius:6px; background:#15130f; color:#f2cc60; font-size:12px }
+  </style>
+</head>
+  <body>
+  <header>
+    <div class="row" style="width:100%">
+      <div class="row">
+        <a href="/agent-dashboard.html" style="color:#e6edf3;text-decoration:none"><strong>Dexter • Live Trenching</strong></a>
+        <form id="runForm" class="row" style="margin-left:16px; gap:6px" onsubmit="return false;">
+          <span id="mintWrap" class="input-wrap" style="position:relative;display:inline-block">
+            <input id="mintInput" placeholder="Select or type token address" style="background:#0b0c10;border:1px solid #2c3242;border-radius:4px;color:#e6edf3;padding:3px 32px 3px 8px;width:220px;font-size:12px" />
+            <button id="mintClear" type="button" title="Clear" aria-label="Clear mint" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);width:16px;height:16px;border:1px solid #5a2a30;border-radius:999px;background:#1a1112;color:#ff6b6b;cursor:pointer;line-height:14px;padding:0;z-index:1001;font-size:12px">×</button>
+            <div id="mintSuggest" style="display:none;position:absolute;top:calc(100% + 4px);left:0;width:100%;max-height:180px;overflow:auto;border:1px solid #2c3242;border-radius:4px;background:#0b0c10;z-index:11000;font-size:12px;line-height:1.3"></div>
+          </span>
+          <datalist id="mintPresets">
+            <option label="LLM" value="BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos"></option>
+            <option label="CLANKER" value="3qq54YqAKG3TcrwNHXFSpMCWoL8gmMuPceJ4FG9npump"></option>
+            <option label="BUTTPLUG" value="2ZqgkCpvXjzB4NstzBUPSrsYrrbziUv5mC9CsxSQZryG"></option>
+          </datalist>
+          <button id="runBtn" type="button" title="Run" style="background:#0f1612;color:#79e08f;border:1px solid #2a4a36;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:12px;line-height:1">➔</button>
+        </form>
+      </div>
+      <div class="row" style="margin-left:auto; gap:8px">
+        <span id="modelbar" class="badge dim">Model: —</span>
+        <button id="debugLoadBtn" title="Load Debug Report" style="background:transparent;border:none;color:#9fb2c8;cursor:pointer;font-size:14px;padding:2px 6px">📁</button>
+        <button id="voiceBtn" class="badge" title="Start voice">Voice: Off</button>
+        <button id="tracesToggle" class="badge" title="Toggle traces">Traces</button>
+        <span id="connbar" class="badge">Connecting…</span>
+        <span id="runsbar" class="badge dim">Active: 0/3</span>
+      </div>
+    </div>
+
+    <!-- Report Loader Modal -->
+    <div id="reportModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:1000; align-items:center; justify-content:center;">
+      <div style="background:#0b0f14; color:#d8e0ea; border:1px solid #1c2733; border-radius:8px; width:min(920px, 95vw); max-height:85vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.6)">
+        <div style="display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid #1c2733; background:#0d1319;">
+          <strong style="font-size:14px">Load Report</strong>
+          <input id="reportSearch" type="text" placeholder="Filter by file or mint…" style="margin-left:12px; flex:1; background:#0a1016; color:#c7d1dc; border:1px solid #203042; border-radius:4px; padding:6px 8px; font-size:12px" />
+          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:#9fb2c8">
+            <input id="reportSkipSpark" type="checkbox" /> Skip sparkline
+          </label>
+          <button id="reportClose" title="Close" style="background:#0f161f; color:#9fb2c8; border:1px solid #2a3b4d; border-radius:4px; padding:6px 10px; cursor:pointer; font-size:12px">Close</button>
+        </div>
+        <div style="display:flex; gap:0; flex:1; min-height:300px;">
+          <div style="flex:1; min-width:320px; border-right:1px solid #1c2733; overflow:auto">
+            <div id="reportResults" style="display:flex; flex-direction:column;">
+              <!-- rows injected here -->
+            </div>
+          </div>
+          <div style="flex:1.1; min-width:320px; overflow:auto; padding:10px 12px;">
+            <div id="reportPreview" style="font-size:12px; color:#b8c6d6; white-space:pre-wrap"></div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; border-top:1px solid #1c2733; background:#0d1319; font-size:12px; color:#90a6bd">
+          <div id="reportStatus">Loading…</div>
+          <div style="display:flex; align-items:center; gap:8px">
+            <select id="reportPageSize" style="background:#0a1016; color:#c7d1dc; border:1px solid #203042; border-radius:4px; padding:4px 6px; font-size:12px">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+            <button id="reportPrev" style="background:#0f161f; color:#9fb2c8; border:1px solid #2a3b4d; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:12px">Prev</button>
+            <button id="reportNext" style="background:#0f161f; color:#9fb2c8; border:1px solid #2a3b4d; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:12px">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="sticky dim statusbar" id="now">Waiting for sessions…</div>
+  
+  <!-- All Traces Panel (collapsible) -->
+  <div id="tracesPanel" style="display:none; margin:8px 16px; border:1px solid #1a1e27; border-radius:6px; background:#0f1117;">
+    <div style="display:flex; gap:8px; align-items:center; padding:6px 8px; border-bottom:1px solid #1a1e27;">
+      <strong style="font-size:12px">All Traces</strong>
+      <label style="font-size:11px; color:#9fb2c8; display:inline-flex; align-items:center; gap:4px">Step
+        <select id="tracesStep" style="background:#0a1016; color:#c7d1dc; border:1px solid #203042; border-radius:4px; padding:2px 4px; font-size:11px">
+          <option value="">all</option>
+          <option>bootstrap</option>
+          <option>socials</option>
+          <option>website</option>
+          <option>twitter</option>
+          <option>telegram</option>
+          <option>market</option>
+          <option>finalize</option>
+          <option>persist</option>
+        </select>
+      </label>
+      <label style="font-size:11px; color:#9fb2c8; display:inline-flex; align-items:center; gap:4px">Kind
+        <select id="tracesKind" style="background:#0a1016; color:#c7d1dc; border:1px solid #203042; border-radius:4px; padding:2px 4px; font-size:11px">
+          <option value="">all</option>
+          <option>step_start</option>
+          <option>step_end</option>
+          <option>status</option>
+          <option>error</option>
+          <option>runner_log</option>
+        </select>
+      </label>
+      <input id="tracesSearch" placeholder="search…" style="margin-left:auto; flex:1; max-width:300px; background:#0a1016; color:#c7d1dc; border:1px solid #203042; border-radius:4px; padding:3px 6px; font-size:11px" />
+      <button id="tracesPause" class="badge" style="font-size:11px">Pause</button>
+      <button id="tracesClear" class="badge" style="font-size:11px">Clear</button>
+    </div>
+    <div id="tracesList" style="max-height:220px; overflow:auto; font-size:12px; padding:6px 8px"></div>
+  </div>
+  
+  <style>
+    /* Realtime Voice Debug panel */
+    .voice-debug { margin: 8px 16px; border:1px solid #1a1e27; border-radius:6px; background:#0f1117; }
+    .voice-debug .vd-head { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:6px 8px; border-bottom:1px solid #1a1e27; background:#0f1117; }
+    .voice-debug .vd-head .spacer { flex:1 1 auto; }
+    .voice-debug .vd-btn { font-size:11px; padding:2px 6px; border:1px solid #2c3242; border-radius:4px; color:#9fb2c8; background:#121521; cursor:pointer; }
+    .voice-debug .vd-btn:hover { color:#e6edf3; border-color:#3a4155; }
+    .voice-debug .vd-badge { font-size:11px; padding:2px 8px; border:1px solid #2c3242; border-radius:999px; color:#9fb2c8; }
+    .voice-debug .vd-badge.ok { color:#79e08f; border-color:#2a4a36; background:#0f1612; }
+    .voice-debug .vd-badge.warn { color:#f2cc60; border-color:#4a3f2a; background:#15130f; }
+    .voice-debug .vd-badge.bad { color:#ff7b7b; border-color:#5a2a30; background:#1a1112; }
+    .voice-debug .vd-log { 
+      max-height: 0; 
+      overflow: hidden; 
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; 
+      font-size:12px; 
+      line-height:1.35; 
+      background:#0b0c10; 
+      transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+    }
+    .voice-debug .vd-log.expanded { 
+      max-height: 220px; 
+      padding: 8px;
+      overflow: auto;
+    }
+    .voice-debug .vd-line { white-space: pre-wrap; word-break: break-word; color:#c8d1dc; }
+    .voice-debug .vd-line .ts { color:#98a6b3; }
+    .voice-debug .vd-line.err { color:#ff7b7b; }
+    .voice-debug .vd-line.warn { color:#f2cc60; }
+  </style>
+  
+  <section id="voiceDebug" class="voice-debug">
+    <div class="vd-head">
+      <strong style="font-size:12px">Realtime Voice Debug</strong>
+      <span id="vdStatus" class="vd-badge warn">Idle</span>
+      <div class="spacer"></div>
+      <button id="vdMute" class="vd-btn" title="Mute" style="color:#79e08f;font-size:14px">🎤</button>
+      <button id="vdStop" class="vd-btn" title="Stop" style="color:#ff7b7b;font-size:14px">■</button>
+      <button id="vdClear" class="vd-btn" title="Clear" style="color:#f2cc60;font-size:14px">⌫</button>
+      <div style="position:relative">
+        <button id="vdMenu" class="vd-btn">⋯</button>
+        <div id="vdMenuDrop" style="display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#121521;border:1px solid #2c3242;border-radius:4px;padding:4px;min-width:120px;z-index:1000">
+          <button id="vdCheck" class="vd-btn" style="display:block;width:100%;text-align:left;margin-bottom:4px">Check</button>
+          <button id="vdHealth" class="vd-btn" style="display:block;width:100%;text-align:left;margin-bottom:4px">Health</button>
+          <button id="vdSend" class="vd-btn" style="display:block;width:100%;text-align:left;margin-bottom:4px">Send Logs</button>
+          <button id="vdVerbose" class="vd-btn" data-on="1" style="display:block;width:100%;text-align:left;margin-bottom:4px">Verbose: On</button>
+          <button id="vdCopy" class="vd-btn" style="display:block;width:100%;text-align:left">Copy</button>
+        </div>
+      </div>
+    </div>
+    <div id="vdLog" class="vd-log"></div>
+  </section>
+
+  <style>
+    /* Tab navigation */
+    .panel-tabs { display:flex; gap:4px; padding: 8px 16px 0; background:#0b0c10; border-bottom:1px solid #1a1e27; position: sticky; top: 96px; z-index: 999; }
+    .panel-tab { padding: 6px 12px; background:#0f1117; border:1px solid #1a1e27; border-bottom:none; border-radius: 6px 6px 0 0; cursor:pointer; font-size:12px; color:#9fb2c8; display:flex; align-items:center; gap:6px; }
+    .panel-tab:hover { color:#e6edf3; background:#121521; }
+    .panel-tab.active { background:#0b0c10; color:#e6edf3; border-bottom:1px solid #0b0c10; margin-bottom:-1px; }
+    .panel-tab .close { margin-left:4px; color:#ff6b6b; cursor:pointer; font-size:14px; line-height:1; }
+    .panel-tab .close:hover { color:#ff8181; }
+    
+    /* Panels container - single panel visible at a time */
+    .panels { padding: 0 16px 16px; }
+    .panel { display:none; border:1px solid #1a1e27; border-radius: 6px; background:#0b0c10; flex-direction:column; min-height: 220px; margin: 8px 0; }
+    .panel.active { display:flex; }
+    .panel header { display:flex; gap:12px; align-items:center; padding:8px 10px; background:#0f1117; border-bottom:1px solid #1a1e27; flex-wrap: wrap; overflow: visible; }
+    .panel header .spacer { flex: 1 1 auto; }
+    .panel header .iconbtn { background:#121521; color:#9fb2c8; border:1px solid #2c3242; border-radius:4px; padding:2px 8px; font-size:12px; cursor:pointer; }
+    .panel header .iconbtn:hover { color:#e6edf3; border-color:#3a4155; }
+    .panel header .iconbtn.warn { color:#f2cc60; border-color:#5a4a1a; background:#15130f; }
+    .panel header .iconbtn.danger { color:#ff6b6b; border-color:#5a2a30; background:#1a1112; }
+    .panel header .iconbtn.danger:hover { color:#ff8181; border-color:#7a343c; background:#201214; }
+    .panel header .titlewrap { display:flex; align-items:baseline; gap:10px; }
+    .panel header .titlewrap .title { font-size:16px; font-weight:700; color:#e6edf3; }
+    .panel header .titlewrap .symbol { font-size:14px; font-weight:600; color:#c8d1dc; }
+    .panel header .addr { font-size:11px; color:#9fb2c8; cursor:pointer; }
+    .panel header .addr:hover { color:#e6edf3; }
+    .panel header .status { font-size:12px; font-weight:600; padding:2px 8px; border-radius:999px; border:1px solid #2c3242; background:#121521; color:#9fb2c8; }
+    .panel header .timer { font-size:12px; font-weight:600; color:#9fb2c8; }
+    .panel .terminal { padding: 8px; height: 220px; overflow:auto; font-size:12px; line-height:1.4; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#0f1117; border:1px solid #1a1e27; border-radius:6px; }
+    /* Hide scrollbar visuals but keep scroll behavior */
+    .panel .terminal { scrollbar-width: none; -ms-overflow-style: none; }
+    .panel .terminal::-webkit-scrollbar { width: 0; height: 0; }
+    /* Let narrative flow with page scroll to avoid nested scrollbars */
+    .panel .narr { padding: 8px; max-height: none; overflow: visible; font-size:13px; line-height:1.5; border-top:1px solid #1a1e27; color:#e6edf3; }
+    .panel .narr h4 { margin:6px 0; font-size:12px; color:#9fb2c8; }
+    .panel .narr .final { border-top:1px solid #1a1e27; margin-top:8px; padding-top:8px; }
+    /* Memory digest: grow naturally (no internal scroll) */
+    .panel .context { padding:8px; border-bottom:1px solid #1a1e27; display:none; }
+    .panel .context .title { font-size:12px; color:#9fb2c8; margin-bottom:4px; display:flex; align-items:center; gap:8px; }
+    .panel .context .body { font-size:12px; color:#c8d1dc; white-space:pre-wrap; }
+    .panel .context .toggle { background:#121521; color:#9fb2c8; border:1px solid #2c3242; border-radius:4px; padding:2px 6px; font-size:11px; cursor:pointer; }
+    .panel .timeline { padding: 8px; border-top:1px solid #1a1e27; }
+    /* Make signals a responsive grid */
+    .panel .signals { padding: 8px; border-top:1px solid #1a1e27; display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 10px; max-width:100%; box-sizing:border-box; }
+    /* Links grid: denser to fit more per row */
+    .panel .links { padding: 8px; border-top:1px solid #1a1e27; display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px 8px; max-width:100%; box-sizing:border-box; }
+    .panel .links .sig { font-size:13px; padding:4px 6px; color:#c8d1dc; border:1px solid #1a1e27; border-radius:6px; display:flex; align-items:center; gap:8px; }
+    .panel .links .sig img.fav { width:14px; height:14px; border-radius:3px; display:block; }
+    .panel .links .sig a, .panel .signals .sig a { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block; max-width:100%; }
+    .panel .timeline .step { display:flex; align-items:center; gap:8px; font-size:13px; padding:2px 0; color:#9fb2c8; }
+    .panel .timeline .step.active { color:#e6edf3; }
+    .panel .timeline .step.done { color:#7ce38b; }
+    .panel .timeline .step.skipped { color:#f2cc60; }
+    .panel .timeline .step.failed { color:#ff7b7b; }
+    .panel .timeline .ms { font-size:11px; color:#98a6b3; margin-left:auto; }
+    .panel .timeline .step:hover { background:#0d1117; }
+    .panel .timeline .step .label { cursor:pointer; }
+    .panel .timeline .details { display:none; padding:4px 8px 8px 20px; font-size:12px; color:#9fb2c8; border-left:2px solid #1a1e27; }
+    .panel .timeline .details.open { display:block; }
+    .panel .timeline .logline { white-space:pre-wrap; word-break:break-word; margin:2px 0; }
+    .panel .signals .sig { font-size:13px; padding:4px 6px; color:#c8d1dc; border:1px solid #1a1e27; border-radius:6px; display:flex; align-items:center; gap:8px; }
+    .panel .signals .sig .tag { font-size:11px; color:#98a6b3; border:1px solid #2c3242; padding:1px 6px; border-radius:999px; margin-right:6px; }
+    .panel .signals .sig img.fav { width:14px; height:14px; border-radius:3px; display:block; }
+    .p-badge { padding: 2px 6px; border:1px solid #2c3242; border-radius: 999px; font-size: 11px; color:#9fb2c8; white-space: nowrap; }
+    .p-badge.ok { color:#79e08f; border-color:#2a4a36; background:#0f1612; }
+    .p-badge.warn { color:#f2cc60; border-color:#4a3f2a; background:#15130f; }
+    .p-badge.bad { color:#ff7b7b; border-color:#5a2a30; background:#1a1112; }
+    /* Use responsive columns (remove forced single-column override) */
+    /* .panels grid is defined above with responsive breakpoints */
+    /* Constrain ALL primary inner sections to the same width */
+    .panel header, .panel .market, .panel .context, .panel .timeline, .panel .terminal, .panel .narr, .panel .signals, .panel .bodygrid, .panel .finalwrap { max-width: 960px; margin-left:auto; margin-right:auto; }
+    /* Side-by-side layout for checklist (timeline) and stream (terminal+narr) */
+    .panel .bodygrid { display:grid; grid-template-columns: 240px 1fr; gap: 8px 12px; align-items:start; padding: 0; }
+    @media (max-width: 960px){ .panel .bodygrid { grid-template-columns: 1fr; } }
+    .panel .timeline { text-align:left; }
+    .panel .streamwrap { display:flex; flex-direction:column; gap:8px; }
+    /* Memory Digest formatting */
+    .panel .context .kv { display:grid; grid-template-columns: 96px 1fr; gap: 4px 10px; align-items:start; }
+    .panel .context .kv .label { font-size:11px; color:#9fb2c8; }
+    .panel .context .kv .value { font-size:12px; color:#c8d1dc; }
+    .panel .context ul { margin: 4px 0 8px; padding-left: 18px; }
+    .panel .context ul.pros-list li { color:#9fe3ad; }
+    .panel .context ul.pros-list li::marker { color:#79e08f; }
+    .panel .context ul.cons-list li { color:#ff9b9b; }
+    .panel .context ul.cons-list li::marker { color:#ff6b6b; }
+    .panel .context .chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .panel .context .chip { font-size:11px; padding:2px 6px; border:1px solid #2c3242; border-radius:999px; color:#9fb2c8; }
+    /* Final report section (full panel width below bodygrid) */
+    .panel .finalwrap { padding: 8px; border-top:1px solid #1a1e27; }
+    .panel .finalwrap h3 { margin:8px 0 6px; font-size:14px; color:#e6edf3; }
+    .panel .finalwrap .final { border:1px solid #1a1e27; border-radius:6px; padding:8px; background:#0f1117; }
+    /* Market snapshot */
+    .panel .market { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:8px; align-items:center; padding: 8px; border-bottom:1px solid #1a1e27; }
+    @media (max-width: 800px){ .panel .market { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    .market .metric { background:#0f1117; border:1px solid #1a1e27; border-radius:6px; padding:6px 8px; }
+    .market .metric .label { font-size:11px; color:#9fb2c8; }
+    .market .metric .value { font-size:14px; font-weight:600; color:#e6edf3; }
+    .market .sparkwrap { grid-column: span 2; display:flex; align-items:center; justify-content:flex-start; gap:8px; }
+    /* Toast */
+    #toast { position: fixed; top: 12px; right: 12px; background:#0f1117; border:1px solid #2c3242; color:#e6edf3; padding:8px 10px; border-radius:6px; font-size:12px; opacity:0; transform: translateY(-8px); transition: opacity .2s, transform .2s; z-index:9999; }
+    #toast.show { opacity:1; transform: translateY(0); }
+    /* Clear button disabled look */
+    #mintClear:disabled { opacity: 0.5; cursor: default; }
+    /* Clear hover */
+    #mintClear:not(:disabled):hover { color:#ff8181; border-color:#7a343c; }
+    /* Suggestion styles */
+    #mintSuggest .item { transition: background .12s, border-color .12s; }
+    #mintSuggest .item:hover { background:#10131a; }
+    #mintSuggest .item.active { background:#121521; border-color:#2c3242 !important; }
+    /* iOS Safari input zoom prevention: ensure 16px minimum on small screens */
+    @media (max-width: 640px){
+      #mintInput { font-size: 16px !important; }
+      #mintSuggest { font-size: 14px !important; }
+      #mintSuggest .item { font-size: 14px !important; line-height: 1.3 !important; }
+    }
+  </style>
+
+  <div id="panelTabs" class="panel-tabs" style="display:none;"></div>
+
+  <section id="panels" class="panels"></section>
+  
+  <div id="voiceBanner">Voice unavailable: missing server OPENAI_API_KEY</div>
+  
+  <div id="toast" aria-live="polite"></div>
+  
+  <div id="walletsOverlay" style="display:none; position:fixed; right:12px; top:54px; width:360px; max-height:60vh; overflow:auto; background:#0f1117; border:1px solid #1a1e27; border-radius:8px; z-index:10000; box-shadow:0 8px 20px rgba(0,0,0,.35)">
+    <div style="display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid #1a1e27; background:#0f1117; position:sticky; top:0">
+      <strong style="font-size:12px">Wallets</strong>
+      <span id="walletDefaultTag" class="vd-badge" style="margin-left:auto">Default: —</span>
+      <button id="walletClose" class="vd-btn">×</button>
+    </div>
+    <div id="walletList" style="padding:8px 10px; display:grid; gap:8px"></div>
+  </div>
+
+  <script>
+    (function(){
+      let API_BASE = (typeof window!=='undefined' && window.AGENT_BASE) ? String(window.AGENT_BASE||'') : '';
+      function api(path){ return (API_BASE || '') + path; }
+      const panelsEl = document.getElementById('panels');
+      const nowTag = document.getElementById('now');
+      const runForm = document.getElementById('runForm');
+      const mintInput = document.getElementById('mintInput');
+      const mintClear = document.getElementById('mintClear');
+      const runBtn = document.getElementById('runBtn');
+      const mintWrap = document.getElementById('mintWrap');
+      const runsbar = document.getElementById('runsbar');
+      const debugLoadBtn = document.getElementById('debugLoadBtn');
+      const activeRuns = new Map();
+      let RUN_LIMIT_HINT = 3;
+      function renderRuns(){ try { runsbar.textContent = 'Active: ' + activeRuns.size + '/' + RUN_LIMIT_HINT; } catch {} try { renderNow(); } catch {} }
+      const fdvTag = document.getElementById('fdv');
+      const liqTag = document.getElementById('liq');
+      const volTag = document.getElementById('vol');
+      const branchTag = document.getElementById('branch');
+      const riskTag = document.getElementById('risk');
+      const voiceBtn = document.getElementById('voiceBtn');
+      const walletsBtn = document.getElementById('walletsBtn');
+      const walletsOverlay = document.getElementById('walletsOverlay');
+      const walletListEl = document.getElementById('walletList');
+      const walletDefaultTag = document.getElementById('walletDefaultTag');
+      const voice = { pc:null, dc:null, mic:null, audio:null, connecting:false, connected:false, muted:false };
+      const wallets = { list: [], defaultId: null };
+      // Bootstrap cache (ETag + data) moved early to avoid temporal refs
+      const boot = { etag:null, version:null, model:null, voice:null, updated_at:null, instructions:'', tools:[] };
+      
+      const PTT_KEY = 'v'; // hold-to-talk key
+      let pttActive = false;
+
+      // Debug helpers
+      const vd = {
+        el: document.getElementById('voiceDebug'),
+        logEl: document.getElementById('vdLog'),
+        statusEl: document.getElementById('vdStatus'),
+        verboseBtn: document.getElementById('vdVerbose'),
+        logs: [],
+        verbose: true,
+        session: (crypto?.randomUUID?.() || Math.random().toString(36).slice(2)),
+        uploadBuf: [],
+        flushing: false,
+        scheduleFlush(){ try { clearTimeout(this._ft); this._ft = setTimeout(()=> this.flush(), 150); } catch {} },
+        async flush(){
+          if (this.flushing) return; this.flushing = true;
+          try {
+            const batch = this.uploadBuf.splice(0, 50);
+            if (!batch.length) { this.flushing = false; return; }
+            const hdr = { 'content-type':'application/json' }; try { if (window.AGENT_TOKEN) hdr['x-agent-token'] = String(window.AGENT_TOKEN); } catch {}
+            await fetch('/realtime/debug-log', { method:'POST', headers: hdr, body: JSON.stringify({ session: this.session, lines: batch }) }).catch(()=>{});
+          } finally {
+            this.flushing = false; if (this.uploadBuf.length) this.scheduleFlush();
+          }
+        },
+        add(level, msg, extra){
+          try {
+            const ts = new Date().toISOString().slice(11,19);
+            const line = { t: ts, level, msg: String(msg||''), extra: extra||null };
+            this.logs.push(line);
+            if (this.logs.length > 500) this.logs.splice(0, this.logs.length - 500);
+            this.render(line);
+            // enqueue for server
+            this.uploadBuf.push(line); this.scheduleFlush();
+          } catch {}
+        },
+        render(last){
+          try {
+            const el = this.logEl; if (!el) return;
+            // Append only last line for efficiency
+            const append = (ln)=>{
+              const div = document.createElement('div'); div.className='vd-line'+(ln.level==='error'?' err':ln.level==='warn'?' warn':'');
+              
+              // Check if this is a trade tool result with a transaction
+              if (ln.msg === 'tool result' && ln.extra?.result) {
+                try {
+                  const result = typeof ln.extra.result === 'string' ? JSON.parse(ln.extra.result.replace(/…$/, '}')) : ln.extra.result;
+                  const toolName = ln.extra.name;
+                  const isTradeTool = ['execute_buy', 'execute_sell', 'execute_sell_all', 'smart_buy', 'smart_sell', 'trade'].includes(toolName);
+                  
+                  if (isTradeTool && result?.mcp?.tx_hash) {
+                    // Create special rendering for trade results
+                    div.innerHTML = `[${ln.t}] ${ln.level.toUpperCase()} ${ln.msg} ${toolName}`;
+                    
+                    // Add transaction link
+                    const txLink = document.createElement('a');
+                    txLink.href = `https://solscan.io/tx/${result.mcp.tx_hash}`;
+                    txLink.target = '_blank';
+                    txLink.style.cssText = 'margin-left:8px;color:#79e08f;text-decoration:underline';
+                    txLink.textContent = '→ View Transaction';
+                    div.appendChild(txLink);
+                    
+                    // Add brief summary without tx_hash
+                    if (this.verbose) {
+                      const summary = document.createElement('span');
+                      summary.style.cssText = 'margin-left:8px;color:#98a6b3;font-size:11px';
+                      const details = [];
+                      if (result.mcp.sol_spent) details.push(`${result.mcp.sol_spent} SOL spent`);
+                      if (result.mcp.sol_received) details.push(`${result.mcp.sol_received} SOL received`);
+                      if (result.mcp.tokens_received) details.push(`tokens received`);
+                      summary.textContent = details.length ? ` (${details.join(', ')})` : '';
+                      div.appendChild(summary);
+                    }
+                    
+                    el.appendChild(div); el.scrollTop = el.scrollHeight;
+                    return;
+                  }
+                } catch {}
+              }
+              
+              // Default rendering for non-trade results
+              const extra = this.verbose && ln.extra ? (' '+safeJson(ln.extra)) : '';
+              div.textContent = `[${ln.t}] ${ln.level.toUpperCase()} ${ln.msg}${extra}`;
+              el.appendChild(div); el.scrollTop = el.scrollHeight;
+            };
+            if (last) append(last);
+            else { el.innerHTML=''; for (const ln of this.logs) append(ln); }
+          } catch {}
+        },
+        clear(){ try { this.logs=[]; this.render(); } catch {} },
+        copy(){ try { const txt=this.logs.map(l=>`[${l.t}] ${l.level.toUpperCase()} ${l.msg}${this.verbose&&l.extra?(' '+safeJson(l.extra)):''}`).join('\n'); navigator.clipboard.writeText(txt); showToast('Voice debug copied'); } catch {} },
+        download(){ try { const blob=new Blob([JSON.stringify(this.logs,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='voice-debug-'+Date.now()+'.json'; a.click(); } catch {} },
+        setStatus(text, cls){ try { this.statusEl.textContent=text; this.statusEl.classList.remove('ok','warn','bad'); if (cls) this.statusEl.classList.add(cls); } catch {} }
+      };
+
+      function safeJson(v){ try { const s=JSON.stringify(v); return s.length>600 ? s.slice(0,600)+'…' : s; } catch { return ''; } }
+
+      // Minimal transcript HUD
+      const voiceHud = document.createElement('div');
+      voiceHud.id = 'voiceHud';
+      voiceHud.style.position = 'fixed';
+      voiceHud.style.right = '10px';
+      voiceHud.style.bottom = '10px';
+      voiceHud.style.zIndex = '9999';
+      voiceHud.style.maxWidth = '36vw';
+      voiceHud.style.background = '#0f1117';
+      voiceHud.style.border = '1px solid #1a1e27';
+      voiceHud.style.borderRadius = '6px';
+      voiceHud.style.padding = '8px 10px';
+      voiceHud.style.display = 'none';
+      voiceHud.innerHTML = '<div style="font-size:12px;color:#9fb2c8;margin-bottom:4px">Voice</div><div id="voiceLog" style="font-size:12px;line-height:1.35;white-space:pre-wrap;color:#e6edf3;max-height:28vh;overflow:auto"></div>';
+      document.body.appendChild(voiceHud);
+      const voiceLog = voiceHud.querySelector('#voiceLog');
+
+      // Voice set status
+      function voiceSetStatus(txt, cls){
+        try {
+          voiceBtn.textContent = 'Voice: ' + txt;
+          voiceBtn.classList.remove('ok','warn','bad');
+          if (cls) voiceBtn.classList.add(cls);
+        } catch {}
+        try { vd.setStatus(txt, cls); } catch {}
+      }
+
+      // Voice append
+      function voiceAppend(text){
+        try { voiceHud.style.display = 'block'; voiceLog.textContent = (voiceLog.textContent || '') + text; voiceLog.scrollTop = voiceLog.scrollHeight; } catch {}
+        try { if (vd && vd.verbose) vd.add('info','assistant.delta', { text: String(text||'').slice(0,240) }); } catch {}
+      }
+      
+      // Voice append line
+      function voiceAppendLine(prefix, text){
+        try { voiceHud.style.display = 'block'; const line = `${prefix}: ${text}\n`; voiceLog.textContent = (voiceLog.textContent || '') + line; voiceLog.scrollTop = voiceLog.scrollHeight; } catch {}
+        try { if (vd && vd.verbose && prefix==='You') vd.add('info','user.transcript', { text: String(text||'').slice(0,240) }); } catch {}
+      }
+
+      // Wallet overlay helpers
+      async function refreshWallets(){
+        try {
+          const hdr={}; if (window.AGENT_TOKEN) hdr['x-agent-token']=String(window.AGENT_TOKEN); if (window.X_USER_TOKEN) hdr['x-user-token']=String(window.X_USER_TOKEN);
+          const [rList, rDef, rAliases] = await Promise.all([
+            fetch(api('/managed-wallets'), { headers: hdr }),
+            fetch(api('/managed-wallets/default'), { headers: hdr }),
+            fetch(api('/managed-wallets/aliases'), { headers: hdr })
+          ]);
+          const jl = await rList.json().catch(()=>({}));
+          const jd = await rDef.json().catch(()=>({}));
+          const ja = await rAliases.json().catch(()=>({}));
+          wallets.list = Array.isArray(jl?.wallets) ? jl.wallets : [];
+          wallets.defaultId = jd?.wallet_id || null;
+          wallets.aliases = Array.isArray(ja?.items) ? ja.items : [];
+          renderWalletHeader();
+          renderWalletOverlay();
+        } catch {}
+      }
+      
+      // Shorten public key
+      function shortPk(pk){ if(!pk) return ''; return `${pk.slice(0,4)}…${pk.slice(-4)}`; }
+      
+      // Render wallet header
+      function renderWalletHeader(){
+        try {
+          if (!walletsBtn) return;
+          const d = wallets.list.find(w=> String(w.id) === String(wallets.defaultId));
+          const alias = (wallets.aliases||[]).find(a=> String(a.wallet_id)===String(wallets.defaultId));
+          const label = alias ? `${alias.alias} (${shortPk(d?.public_key||'')})` : (d ? (d.wallet_name||shortPk(d.public_key)) : '—');
+          walletsBtn.textContent = d ? `Wallets: ${label}` : 'Wallets';
+          walletDefaultTag.textContent = `Default: ${d ? (d.wallet_name||shortPk(d.public_key)) : '—'}`;
+        } catch {}
+      }
+
+      // Render wallet overlay
+      function renderWalletOverlay(){
+        try {
+          walletListEl.innerHTML = '';
+          // Inline alias manager
+          const aliasBox = document.createElement('div'); aliasBox.style.border='1px solid #1a1e27'; aliasBox.style.borderRadius='6px'; aliasBox.style.padding='8px'; aliasBox.style.marginBottom='8px';
+          const aliasTitle = document.createElement('div'); aliasTitle.textContent='Aliases'; aliasTitle.style.fontSize='12px'; aliasTitle.style.fontWeight='600'; aliasTitle.style.marginBottom='6px'; aliasBox.appendChild(aliasTitle);
+          const aliasList = document.createElement('div'); aliasList.style.display='grid'; aliasList.style.gap='6px';
+          const byWallet = (id)=> wallets.list.find(w=> String(w.id)===String(id));
+          const renderAliases = ()=>{
+            aliasList.innerHTML='';
+            const arr = Array.isArray(wallets.aliases)?wallets.aliases:[];
+            if (!arr.length) { const empty=document.createElement('div'); empty.textContent='No aliases yet'; empty.style.fontSize='12px'; empty.style.color='#9fb2c8'; aliasList.appendChild(empty); }
+            for (const a of arr){
+              const row=document.createElement('div'); row.style.display='flex'; row.style.alignItems='center'; row.style.justifyContent='space-between';
+              const left=document.createElement('div'); left.style.fontSize='12px'; const w=byWallet(a.wallet_id); const label=w?(w.wallet_name||shortPk(w.public_key)):(a.wallet_id); left.textContent=`${a.alias} → ${label}`; row.appendChild(left);
+              const del=document.createElement('button'); del.className='vd-btn'; del.textContent='Delete'; del.addEventListener('click', async ()=>{
+                try{
+                  const hdr={'content-type':'application/json'}; if (window.AGENT_TOKEN) hdr['x-agent-token']=String(window.AGENT_TOKEN); if (window.X_USER_TOKEN) hdr['x-user-token']=String(window.X_USER_TOKEN);
+                  const r=await fetch(api('/managed-wallets/aliases'), { method:'DELETE', headers: hdr, body: JSON.stringify({ alias: a.alias }) });
+                  const j=await r.json(); if (j?.ok){ showToast('Alias deleted'); await refreshWallets(); } else showToast('Delete failed');
+                } catch { showToast('Delete failed'); }
+              });
+              row.appendChild(del);
+              aliasList.appendChild(row);
+            }
+          };
+          renderAliases();
+          aliasBox.appendChild(aliasList);
+          walletListEl.appendChild(aliasBox);
+          for (const w of wallets.list){
+            const row = document.createElement('div');
+            row.style.border='1px solid #1a1e27'; row.style.borderRadius='6px'; row.style.padding='8px';
+            const name = document.createElement('div'); name.style.fontSize='12px'; name.style.fontWeight='600'; name.textContent = w.wallet_name || '(unnamed)'; row.appendChild(name);
+            const meta = document.createElement('div'); meta.style.fontSize='12px'; meta.style.color='#9fb2c8'; meta.textContent = `${shortPk(w.public_key)} • ${w.id}`; row.appendChild(meta);
+            const actions = document.createElement('div'); actions.style.marginTop='6px'; actions.style.display='flex'; actions.style.gap='6px';
+            const btnDefault = document.createElement('button'); btnDefault.className='vd-btn'; btnDefault.textContent = 'Set Default'; btnDefault.addEventListener('click', async ()=>{
+              try { const hdr={'content-type':'application/json'}; if (window.AGENT_TOKEN) hdr['x-agent-token']=String(window.AGENT_TOKEN); if (window.X_USER_TOKEN) hdr['x-user-token']=String(window.X_USER_TOKEN); const r=await fetch(api('/managed-wallets/default'), { method:'POST', headers: hdr, body: JSON.stringify({ wallet_id: w.id }) }); const j = await r.json(); if (j?.ok){ wallets.defaultId = String(w.id); renderWalletHeader(); showToast('Default wallet set'); } else { showToast('Failed to set default'); } } catch {}
+            });
+            const btnAlias = document.createElement('button'); btnAlias.className='vd-btn'; btnAlias.textContent='Add Alias'; btnAlias.addEventListener('click', async ()=>{
+              try {
+                const alias = prompt('Enter alias for this wallet (e.g., "trading")');
+                if (!alias) return;
+                const hdr={'content-type':'application/json'}; if (window.AGENT_TOKEN) hdr['x-agent-token']=String(window.AGENT_TOKEN); if (window.X_USER_TOKEN) hdr['x-user-token']=String(window.X_USER_TOKEN);
+                const r=await fetch(api('/managed-wallets/aliases'), { method:'POST', headers: hdr, body: JSON.stringify({ wallet_id: w.id, alias: String(alias).trim() }) });
+                const j = await r.json();
+                if (j?.ok) { showToast('Alias saved'); try { await refreshWallets(); } catch {} } else showToast('Alias failed');
+              } catch {}
+            });
+            const btnCopyId = document.createElement('button'); btnCopyId.className='vd-btn'; btnCopyId.textContent='Copy ID'; btnCopyId.addEventListener('click', ()=>{ try{ navigator.clipboard.writeText(String(w.id)); showToast('Copied wallet id'); } catch {} });
+            const btnCopyPk = document.createElement('button'); btnCopyPk.className='vd-btn'; btnCopyPk.textContent='Copy PK'; btnCopyPk.addEventListener('click', ()=>{ try{ navigator.clipboard.writeText(String(w.public_key)); showToast('Copied public key'); } catch {} });
+            actions.appendChild(btnDefault); actions.appendChild(btnAlias); actions.appendChild(btnCopyId); actions.appendChild(btnCopyPk); row.appendChild(actions);
+            walletListEl.appendChild(row);
+          }
+        } catch {}
+      }
+      
+      // Wallets button and close
+      try {
+        walletsBtn.addEventListener('click', async ()=>{ if (walletsOverlay.style.display==='none'){ await refreshWallets(); walletsOverlay.style.display='block'; } else { walletsOverlay.style.display='none'; } });
+        document.getElementById('walletClose').addEventListener('click', ()=> walletsOverlay.style.display='none');
+      } catch {}
+
+      // Show banner if OpenAI key missing
+      try { 
+        if (typeof window.OPENAI_KEY_PRESENT !== 'undefined' && !window.OPENAI_KEY_PRESENT) { const vb=document.getElementById('voiceBanner'); vb.style.display='block'; } 
+      } catch {}
+      
+      // Start voice
+      async function startVoice(){
+        if (voice.connecting || voice.connected) return;
+        voice.connecting = true; voiceSetStatus('Starting…','warn'); vd.add('info','startVoice()');
+        // Animate the debug log expansion when voice starts
+        document.getElementById('vdLog').classList.add('expanded');
+        try {
+          const tokenHdr = {}; try { if (window.AGENT_TOKEN) tokenHdr['x-agent-token'] = String(window.AGENT_TOKEN); if (window.X_USER_TOKEN) tokenHdr['x-user-token'] = String(window.X_USER_TOKEN); } catch {}
+          vd.add('info','POST /realtime/sessions');
+          const r = await fetch(api('/realtime/sessions'), { method:'POST', headers:{ 'content-type':'application/json', ...tokenHdr }, body: JSON.stringify({}) });
+          vd.add('info','/realtime/sessions response', { status:r.status });
+          if (!r.ok) {
+            try { const e = await r.json(); vd.add('error','session mint failed', e); if (e && e.error === 'missing_openai_key') { voiceSetStatus('No Key','bad'); showToast('Set OPENAI_API_KEY for voice'); return; } } catch (e2) { vd.add('error','session mint failed (no JSON)'); }
+            voiceSetStatus('Error','bad'); return;
+          }
+          const j = await r.json();
+          const eph = j?.client_secret?.value || '';
+          vd.add('info','session minted', { id:j?.id, model:j?.model, expires_at: j?.expires_at, token: eph ? (eph.slice(0,8)+'…'+eph.slice(-6)) : null });
+          try { if (j?.mcp && j.mcp.host) vd.add('info','MCP attached', { host: j.mcp.host }); } catch {}
+          if (!j?.ok || !eph) { voiceSetStatus('Error','bad'); return; }
+          const model = j.model || 'gpt-realtime';
+
+          const pc = new RTCPeerConnection();
+          voice.pc = pc; voice.audio = new Audio(); voice.audio.autoplay = true; voice.audio.playsInline = true;
+          vd.add('info','RTCPeerConnection created');
+          try { const mb=document.getElementById('modelbar'); if (mb) mb.textContent = `Model: ${model} • Voice: ${j.voice||'verse'}`; } catch {}
+
+          // Handle remote audio
+          pc.ontrack = (e) => {
+            try { voice.audio.srcObject = e.streams[0]; voice.audio.play().catch(()=>{}); vd.add('info','ontrack: audio stream attached'); } catch { vd.add('warn','ontrack: attach failed'); }
+          };
+          pc.oniceconnectionstatechange = ()=>{
+            const s = pc.iceConnectionState;
+            vd.add('info','iceConnectionState', { state:s });
+            if (s === 'connected') { voice.connected = true; voiceSetStatus('On','ok'); }
+            if (s === 'failed' || s === 'disconnected' || s === 'closed') { stopVoice(); }
+          };
+          pc.onconnectionstatechange = ()=>{ try { vd.add('info','connectionState', { state: pc.connectionState }); } catch {} };
+
+          // Data channel for events
+          const dc = pc.createDataChannel('oai-events');
+          voice.dc = dc;
+          dc.onmessage = (ev)=>{
+            try {
+              const msg = JSON.parse(ev.data);
+              // Assistant text deltas (support multiple frame names per Realtime guide)
+              if ((msg.type === 'response.delta' || msg.type === 'response.output_text.delta' || msg.type === 'response.text.delta') && typeof (msg.delta||msg.text) === 'string') {
+                const seg = msg.delta || msg.text;
+                voiceAppend(seg);
+                if (vd.verbose) vd.add('info','delta', { text: String(seg).slice(0, 240), type: msg.type });
+              }
+              if (msg.type === 'response.completed') voiceAppend('\n');
+              // Heuristic user transcript extraction
+              try {
+                if (msg.type === 'conversation.item.created' && msg.item && msg.item.role === 'user') {
+                  const parts = Array.isArray(msg.item.content) ? msg.item.content : [];
+                  for (const c of parts) {
+                    const text = c?.text || c?.value || '';
+                    const ttype = String(c?.type||'');
+                    if (text && (ttype.includes('input') || ttype.includes('transcript') || ttype.includes('text'))) {
+                      voiceAppendLine('You', text);
+                      if (vd.verbose) vd.add('info','user.transcript', { text: text.slice(0,240) });
+                      try { checkPendingConfirm(text); } catch {}
+                    }
+                  }
+                }
+                if ((msg.type||'').includes('transcription') && (msg.text || msg.transcript)) {
+                  const t = msg.text || msg.transcript; voiceAppendLine('You', String(t));
+                  if (vd.verbose) vd.add('info','user.transcript', { text: String(t).slice(0,240) });
+                  try { checkPendingConfirm(t); } catch {}
+                }
+              } catch {}
+              // Log tool-related frames and unknown types for visibility
+              const t = String(msg.type||'');
+              if (t.startsWith('response.function_call')) {
+                vd.add('info','tool-frame', { type: t });
+              } else if (vd.verbose && t !== 'response.delta') {
+                vd.add('info','frame', { type: t });
+              }
+              if (t === 'error') {
+                try { vd.add('error','realtime error', msg?.error || msg); } catch { vd.add('error','realtime error'); }
+              }
+              handleToolFrames(msg);
+            } catch (e) { vd.add('warn','dc non-JSON message', { size: (ev?.data?.length||0) }); }
+          };
+          dc.onopen = ()=>{ vd.add('info','dc open'); };
+          dc.onclose = ()=>{ vd.add('info','dc close'); };
+
+          // Microphone
+          vd.add('info','requesting mic');
+          const ms = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
+          voice.mic = ms;
+          for (const track of ms.getAudioTracks()) { pc.addTrack(track, ms); }
+          try { const dev = ms.getAudioTracks()[0]; vd.add('info','mic ready', { label: dev?.label||'', enabled: dev?.enabled, muted: dev?.muted }); } catch {}
+          // Receive audio back
+          pc.addTransceiver('audio', { direction:'recvonly' });
+
+          vd.add('info','creating offer');
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          vd.add('info','localDescription set', { sdp: (vd.verbose? offer.sdp.slice(0,120)+'…' : undefined) });
+          const sdpResp = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`, {
+            method: 'POST',
+            headers: {
+              'authorization': `Bearer ${eph}`,
+              'content-type': 'application/sdp',
+              'openai-beta': 'realtime=v1',
+            },
+            body: offer.sdp,
+          });
+          vd.add('info','SDP POST response', { status: sdpResp.status });
+          if (!sdpResp.ok) { voiceSetStatus('Error','bad'); try { const t=await sdpResp.text(); vd.add('error','SDP error body', { text: t.slice(0,800) }); } catch {}; stopVoice(); return; }
+          const answer = await sdpResp.text();
+          await pc.setRemoteDescription({ type:'answer', sdp: answer }); vd.add('info','remoteDescription set');
+
+          // Once DC opens, fetch bootstrap and send session.update (instructions + tools)
+          dc.onopen = async ()=>{
+            try {
+              const hdr = {}; if (window.AGENT_TOKEN) hdr['x-agent-token'] = String(window.AGENT_TOKEN); if (window.X_USER_TOKEN) hdr['x-user-token'] = String(window.X_USER_TOKEN);
+              // Conditional fetch with ETag
+              if (boot.etag) hdr['If-None-Match'] = String(boot.etag);
+              const r = await fetch(api('/realtime/bootstrap'), { headers: hdr, cache:'no-cache' });
+              let b = null;
+              if (r.status === 304) {
+                b = { model: boot.model, voice: boot.voice, version: boot.version, updated_at: boot.updated_at, instructions: boot.instructions, tools: boot.tools };
+              } else {
+                b = await r.json().catch(()=>({}));
+                boot.etag = r.headers.get('etag') || (b?.version ? `W/"${b.version}"` : null);
+                boot.model = b?.model || model;
+                boot.voice = j.voice || 'verse';
+                boot.version = b?.version || null;
+                boot.updated_at = b?.updated_at || Date.now();
+                boot.instructions = b?.instructions || '';
+                boot.tools = Array.isArray(b?.tools) ? b.tools : [];
+              }
+              try {
+                const mb=document.getElementById('modelbar');
+                if (mb) {
+                  mb.textContent = `Model: ${boot.model} • Voice: ${boot.voice}${boot.version?` • Tools v${boot.version}`:''}`;
+                  const updated = (new Date(boot.updated_at||Date.now())).toUTCString();
+                  mb.title = `Model: ${boot.model}\nVoice: ${boot.voice}\nTools: v${boot.version||'-'}\nUpdated: ${updated}`;
+                }
+                vd.add('info','bootstrap', { model: boot.model, voice: boot.voice, tools: boot.tools.length, version: boot.version });
+              } catch {}
+              const frame = { type:'session.update', session: { instructions: boot.instructions, turn_detection: { type:'server_vad' }, voice: boot.voice, modalities: ['audio','text'], tool_choice: 'auto' } };
+              dc.send(JSON.stringify(frame)); vd.add('info','session.update sent', { has_instructions: !!boot.instructions });
+              if (boot.tools.length) { dc.send(JSON.stringify({ type:'session.update', session:{ tools: boot.tools } })); vd.add('info','tools registered', { n: boot.tools.length }); }
+              // Attach MCP via proxy to keep token server-side (Realtime calls our proxy; proxy adds bearer auth)
+              // Pass through a per-user token via query to enable wallet mapping on the MCP server
+              try {
+                // Prefer a short‑lived server‑minted MCP user token; include Supabase bearer if present
+                let minted = null;
+                try {
+                  const hdr = { 'accept':'application/json' };
+                  try { const at = window.SUPABASE?.session?.access_token; if (at) hdr['authorization'] = `Bearer ${at}`; } catch {}
+                  const r = await fetch(api('/mcp-user-token'), { headers: hdr, cache:'no-cache' });
+                  if (r.ok) { const j = await r.json().catch(()=>null); minted = j?.token || null; }
+                } catch {}
+                let mcpPath = '/mcp-proxy';
+                const tok = minted || (window.X_USER_TOKEN || '');
+                if (tok) mcpPath += `?userToken=${encodeURIComponent(String(tok))}`;
+                const absProxy = new URL(api(mcpPath), location.origin).toString();
+                const mcpFrame = { type:'session.update', session:{ tools:[{ type:'mcp', server_label:'token-ai', server_url: absProxy }] } };
+                dc.send(JSON.stringify(mcpFrame));
+                vd.add('info','mcp attached', { url: absProxy, minted: !!minted });
+              } catch (e) { vd.add('warn','mcp attach failed', { error: String(e?.message||e) }); }
+              // gear removed; details shown in modelbar tooltip
+            } catch (e) { vd.add('error','bootstrap/session.update failed', { error: String(e?.message||e) }); }
+          };
+
+          voice.connecting = false; voiceSetStatus('On','ok'); voiceHud.style.display='block';
+        } catch (e) {
+          vd.add('error','startVoice failed', { error: String(e?.message||e) });
+          voice.connecting = false; voiceSetStatus('Error','bad');
+        }
+      }
+
+      // Stop voice
+      function stopVoice(){
+        vd.add('info','stopVoice()');
+        try { if (voice.dc) { try { voice.dc.close(); } catch {} } } catch {}
+        try { if (voice.pc) { try { voice.pc.close(); } catch {} } } catch {}
+        try { if (voice.mic) { for (const t of voice.mic.getTracks()) { try { t.stop(); } catch {} } } } catch {}
+        voice.pc = null; voice.dc = null; voice.mic = null; voice.connected = false; voice.connecting = false;
+        voiceSetStatus('Off');
+        // Animate the debug log collapse when voice stops
+        document.getElementById('vdLog').classList.remove('expanded');
+      }
+
+      // Voice button and close
+      try {
+        voiceBtn.addEventListener('click', ()=>{ if (voice.connected || voice.connecting) { stopVoice(); } else { startVoice(); } });
+      } catch {}
+
+      // Debug panel controls and menu dropdown toggle
+      try {
+        // Debug panel menu dropdown toggle
+        const menuBtn = document.getElementById('vdMenu');
+        const menuDrop = document.getElementById('vdMenuDrop');
+        menuBtn.addEventListener('click', (e)=>{ 
+          e.stopPropagation();
+          menuDrop.style.display = menuDrop.style.display === 'none' ? 'block' : 'none';
+        });
+        document.addEventListener('click', ()=>{ menuDrop.style.display = 'none'; });
+        menuDrop.addEventListener('click', (e)=>{ e.stopPropagation(); });
+        document.getElementById('vdClear').addEventListener('click', ()=> vd.clear());
+        document.getElementById('vdCopy').addEventListener('click', ()=> vd.copy());
+        document.getElementById('vdVerbose').addEventListener('click', (e)=>{ vd.verbose = !vd.verbose; e.currentTarget.setAttribute('data-on', vd.verbose? '1':'0'); e.currentTarget.textContent = 'Verbose: ' + (vd.verbose?'On':'Off'); vd.render(); });
+        document.getElementById('vdStop').addEventListener('click', ()=> stopVoice());
+        document.getElementById('vdMute').addEventListener('click', (e)=>{
+          try { 
+            voice.muted = !voice.muted; 
+            const tr = voice?.mic?.getAudioTracks?.()[0]; 
+            if (tr) tr.enabled = !voice.muted; 
+            e.currentTarget.textContent = voice.muted ? '🔇' : '🎤';
+            e.currentTarget.style.color = voice.muted ? '#ff7b7b' : '#79e08f';
+            vd.add('info', voice.muted ? 'mic muted' : 'mic unmuted'); 
+          } catch {}
+        });
+        document.getElementById('vdHealth').addEventListener('click', async ()=>{
+          try { const hdr={}; if (window.AGENT_TOKEN) hdr['x-agent-token']=String(window.AGENT_TOKEN); if (window.X_USER_TOKEN) hdr['x-user-token']=String(window.X_USER_TOKEN); const r = await fetch(api(`/realtime/health?session=${encodeURIComponent(vd.session)}`), { headers: hdr }); const j = await r.json(); vd.add(j?.ok?'info':'error','health', j); } catch (e) { vd.add('error','health failed', { error:String(e?.message||e) }); }
+        });
+        document.getElementById('vdSend').addEventListener('click', async ()=>{
+          try { const hdr={'content-type':'application/json'}; if (window.AGENT_TOKEN) hdr['x-agent-token']=String(window.AGENT_TOKEN); const note = `manual from UI ${new Date().toISOString()}`; const r = await fetch(api('/realtime/debug-save'), { method:'POST', headers: hdr, body: JSON.stringify({ session: vd.session, note }) }); const j = await r.json(); if (j?.ok) { vd.add('info','logs saved', { file:j.file, saved:j.saved }); showToast('Logs sent'); } else { vd.add('error','save failed', j); }
+          } catch (e) { vd.add('error','save error', { error:String(e?.message||e) }); }
+        });
+        document.getElementById('vdCheck').addEventListener('click', async ()=>{
+          vd.add('info','Check: env + mic + session');
+          // Environment
+          vd.add('info','env', { protocol: location.protocol, host: location.host, https: location.protocol==='https:' });
+          // Mic probe
+          try {
+            const ms = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const tr = ms.getAudioTracks()[0]; vd.add('info','mic probe ok', { label: tr?.label||'', enabled: tr?.enabled, muted: tr?.muted });
+            try { for (const t of ms.getTracks()) t.stop(); } catch {}
+          } catch (e) { vd.add('error','mic probe failed', { error: String(e?.message||e) }); }
+          // Session probe
+          try {
+            const tokenHdr = {}; try { if (window.AGENT_TOKEN) tokenHdr['x-agent-token'] = String(window.AGENT_TOKEN); } catch {}
+            const r = await fetch(api('/realtime/sessions'), { method:'POST', headers:{ 'content-type':'application/json', ...tokenHdr }, body: JSON.stringify({}) });
+            if (!r.ok) { const e = await r.json().catch(()=>null); vd.add('error','session probe failed', { status:r.status, body: e }); return; }
+            const j = await r.json(); vd.add('info','session probe ok', { model: j?.model, expires_at: j?.expires_at });
+          } catch (e) { vd.add('error','session probe error', { error: String(e?.message||e) }); }
+        });
+        
+        // Initial boot log
+        vd.add('info','Voice debug ready');
+        // Try to detect API base prefix automatically in case of reverse proxies
+        (async function detectApiBase(){
+          const candidates = [ '', '/token-ai', '/ai-ui' ];
+          for (const p of candidates) {
+            try {
+              const hdr = {}; if (window.AGENT_TOKEN) hdr['x-agent-token']=String(window.AGENT_TOKEN);
+              if (window.X_USER_TOKEN) hdr['x-user-token']=String(window.X_USER_TOKEN);
+              const r = await fetch(p + '/realtime/health?ping=1', { headers: hdr });
+              if (r.ok) { const j = await r.json().catch(()=>null); if (j && typeof j === 'object' && ('ok' in j)) { API_BASE = p; vd.add('info','API base', { base: API_BASE || '/' }); return; } }
+            } catch {}
+          }
+          vd.add('warn','API base autodetect failed; using root');
+        })();
+      } catch {}
+
+      // Push-to-talk (hold V to unmute)
+      function setMicEnabled(on){ try { const tr = voice?.mic?.getAudioTracks?.()[0]; if (tr) tr.enabled = !!on; voice.muted = !on; voiceSetStatus(voice.connected ? (on?'On':'Muted') : (voice.connecting?'Starting…':'Off'), on?'ok':'warn'); } catch {} }
+      
+      // Push-to-talk (hold V to unmute)
+      try {
+        window.addEventListener('keydown', (e)=>{
+          if (e.key && e.key.toLowerCase() === PTT_KEY) {
+            if (!pttActive) {
+              pttActive = true; setMicEnabled(true); vd.add('info','ptt down');
+              try { voice.dc?.send(JSON.stringify({ type:'response.cancel' })); vd.add('info','barge-in: response.cancel sent'); } catch {}
+            }
+          }
+        }, true);
+        window.addEventListener('keyup', (e)=>{
+          if (e.key && e.key.toLowerCase() === PTT_KEY) { if (pttActive) { pttActive = false; setMicEnabled(false); vd.add('info','ptt up'); } }
+        }, true);
+      } catch {}
+
+      // Basic tool-calling bridge: accumulate args and call server, then inform model
+      const toolBuf = new Map();
+      let pendingConfirm = null; // { address, symbol, name }
+      let lastResolveList = [];
+      let pendingCandidates = null; // [{address,symbol,name,liquidity_usd}]
+
+      // Helper functions for confirmation flow
+      function isYes(text){ const s=String(text||'').toLowerCase(); return /\b(yes|yep|yeah|sure|proceed|go ahead|do it|start|confirm|okay|ok)\b/.test(s); }
+
+      // Check if text is no
+      function isNo(text){ const s=String(text||'').toLowerCase(); return /\b(no|nope|cancel|stop|don\'t|do not|abort)\b/.test(s); }
+      
+      // Convert word to index
+      function wordToIndex(s){ const m = String(s).toLowerCase(); if (/^first\b|\b1(st)?\b/.test(m)) return 0; if (/^second\b|\b2(nd)?\b/.test(m)) return 1; if (/^third\b|\b3(rd)?\b/.test(m)) return 2; const n = parseInt(m,10); return Number.isFinite(n) && n>0 ? (n-1) : -1; }
+      
+      // Parse liquidity
+      function parseLiquidity(text){ try { const m = String(text).toLowerCase().match(/\$?([0-9]+(?:\.[0-9]+)?)(\s*[mk])?/); if(!m) return null; let val = parseFloat(m[1]); const unit = (m[2]||'').trim(); if (unit==='m') val *= 1_000_000; if (unit==='k') val *= 1_000; return val; } catch { return null; } }
+      
+      // Pick by address hint
+      function pickByAddrHint(text, list){ const t=String(text).replace(/[^a-zA-Z0-9]/g,''); if (t.length<3) return -1; const L=t.slice(-6); const U=t.toUpperCase(); let best=-1; for (let i=0;i<list.length;i++){ const a=String(list[i].address||'').toUpperCase(); if (!a) continue; if (a.endsWith(U) || a.startsWith(U) || a.includes(U) || a.endsWith(L.toUpperCase())) { best=i; break; } } return best; }
+      
+      // Pick by liquidity
+      function pickByLiquidity(val, list){ if (!Number.isFinite(val)) return -1; let best=-1, bestDiff=Infinity; for (let i=0;i<list.length;i++){ const liq = Number(list[i].liquidity_usd||0) || 0; const diff = Math.abs(liq - val); if (diff < bestDiff) { best=i; bestDiff=diff; } } return best; }
+      
+      // Select candidate
+      function selectCandidate(text, list){ if (!Array.isArray(list)||!list.length) return -1; const idx = wordToIndex(text); if (idx>=0 && idx<list.length) return idx; const addrIdx = pickByAddrHint(text, list); if (addrIdx>=0) return addrIdx; const liq = parseLiquidity(text); if (liq!=null) { const i = pickByLiquidity(liq, list); if (i>=0) return i; } return -1; }
+      
+      // Check pending confirmation
+      async function checkPendingConfirm(text){
+        try {
+          if (pendingCandidates && Array.isArray(pendingCandidates) && pendingCandidates.length) {
+            const selIdx = selectCandidate(text, pendingCandidates);
+            if (selIdx>=0) {
+              const choice = pendingCandidates[selIdx]; pendingCandidates = null; pendingConfirm = { address: choice.address, symbol: choice.symbol||null, name: choice.name||null };
+              const addrShort = choice.address ? `${choice.address.slice(0,4)}…${choice.address.slice(-4)}` : '';
+              const lab = `${choice.symbol || choice.name || 'token'} ${addrShort}`;
+              voice.dc?.send(JSON.stringify({ type:'response.create', response: { instructions: `Selected ${lab}. Say “yes” to start analysis, or “no” to cancel.` } }));
+              vd.add('info','candidate selected', { index: selIdx, address: choice.address });
+              return true;
+            }
+          }
+          if (!pendingConfirm) return false;
+          if (isYes(text)){
+            const sel = pendingConfirm; pendingConfirm = null;
+            const hdr = { 'content-type':'application/json' }; try { if (window.AGENT_TOKEN) hdr['x-agent-token']=String(window.AGENT_TOKEN); if (window.X_USER_TOKEN) hdr['x-user-token']=String(window.X_USER_TOKEN); } catch {}
+            try {
+              const r = await fetch(api('/realtime/tool-call'), { method:'POST', headers: hdr, body: JSON.stringify({ name:'run_agent', args:{ mint: sel.address } }) });
+              const j = await r.json().catch(()=>({}));
+              const addrShort = sel.address ? `${sel.address.slice(0,4)}…${sel.address.slice(-4)}` : '';
+              const lab = `${sel.symbol || sel.name || 'token'} ${addrShort}`;
+              const msg = j?.ok ? `Starting analysis for ${lab}.` : `Failed to start analysis for ${lab}.`;
+              voice.dc?.send(JSON.stringify({ type:'response.create', response: { instructions: msg } }));
+              vd.add(j?.ok?'info':'error','confirm->run_agent', { mint: sel.address, result: j });
+            } catch (e) {
+              vd.add('error','confirm->run_agent error', { error: String(e?.message||e) });
+            }
+            return true;
+          }
+          if (isNo(text)){
+            const sel = pendingConfirm; pendingConfirm = null;
+            const addrShort = sel.address ? `${sel.address.slice(0,4)}…${sel.address.slice(-4)}` : '';
+            const lab = `${sel.symbol || sel.name || 'token'} ${addrShort}`;
+            voice.dc?.send(JSON.stringify({ type:'response.create', response: { instructions: `Cancelled ${lab}. You can say another token name or symbol.` } }));
+            vd.add('info','confirm->cancel', { address: sel.address });
+            return true;
+          }
+        } catch {}
+        return false;
+      }
+      
+      // Handle tool frames
+      async function handleToolFrames(msg){
+        try {
+          if (!msg || !msg.type) return;
+          if (msg.type === 'response.function_call.created') {
+            const id = msg.id || msg.call_id || (msg.item?.id) || null; const name = msg.name || msg.function?.name || msg.item?.name || null;
+            if (!id || !name) return; toolBuf.set(id, { name, args:'' }); vd.add('info','tool created', { id, name });
+            return;
+          }
+          if (msg.type === 'response.function_call.arguments.delta') {
+            const id = msg.id || msg.call_id || (msg.item?.id) || null; if (!id) return; const rec = toolBuf.get(id); if (!rec) return; const delta = msg.delta || msg.arguments || ''; rec.args += String(delta); return;
+          }
+          if (msg.type === 'response.function_call.completed') {
+            const id = msg.id || msg.call_id || (msg.item?.id) || null; if (!id) return; const rec = toolBuf.get(id); if (!rec) return; toolBuf.delete(id);
+            let argsObj = {}; try { argsObj = rec.args ? JSON.parse(rec.args) : {}; } catch { argsObj = {}; }
+            vd.add('info','tool completed', { id, name: rec.name, args: argsObj });
+            // Call server tool endpoint
+            const hdr = { 'content-type':'application/json' }; try { if (window.AGENT_TOKEN) hdr['x-agent-token']=String(window.AGENT_TOKEN); if (window.X_USER_TOKEN) hdr['x-user-token']=String(window.X_USER_TOKEN); } catch {}
+            let result = null;
+            try {
+              const r = await fetch(api('/realtime/tool-call'), { method:'POST', headers: hdr, body: JSON.stringify({ name: rec.name, args: argsObj }) });
+              const j = await r.json(); result = j;
+            } catch (e) { result = { ok:false, error: String(e?.message||e) }; }
+            const brief = (()=>{ try { const s=JSON.stringify(result); return s.length>400 ? s.slice(0,400)+'…' : s; } catch { return String(result); }})();
+            vd.add(result?.ok?'info':'error','tool result', { name: rec.name, result: brief });
+            // Confirmation flow for token resolution
+            if (rec.name === 'resolve_token') {
+              try {
+                const items = Array.isArray(result?.results) ? result.results : [];
+                lastResolveList = items;
+                if (items.length === 0) {
+                  voice.dc?.send(JSON.stringify({ type:'response.create', response: { instructions: `I couldn't find a token for "${argsObj?.query||''}". Please say a different name or symbol.` } }));
+                } else {
+                  pendingCandidates = items.slice(0, 5);
+                  // Speak top 3 options with distinguishing info
+                  const top3 = pendingCandidates.slice(0,3).map((it, i)=>{
+                    const addrShort = it.address ? `${it.address.slice(0,4)}…${it.address.slice(-4)}` : '';
+                    const liq = (Number(it.liquidity_usd||0) || 0);
+                    const liqTxt = liq >= 1_000_000 ? (`$${(liq/1_000_000).toFixed(1)}m`) : (liq >= 1_000 ? (`$${(liq/1_000).toFixed(0)}k`) : (`$${liq.toFixed(0)}`));
+                    return `${i+1}) ${it.symbol || it.name || 'token'} ${addrShort} • liq ${liqTxt}`;
+                  }).join('; ');
+                  const instr = `I found these: ${top3}. Say a number (1-3), or say the last four of the address, or approximate liquidity (e.g., $2m).`;
+                  voice.dc?.send(JSON.stringify({ type:'response.create', response: { instructions: instr } }));
+                }
+              } catch {}
+              return;
+            }
+            // Send function_call_output back to OpenAI, then trigger response
+            try {
+              // First send the function output with the actual result data
+              const outputData = result?.mcp || result || { ok: false, error: 'no_result' };
+              voice.dc?.send(JSON.stringify({ 
+                type: 'conversation.item.create',
+                item: {
+                  type: 'function_call_output',
+                  call_id: id,
+                  output: JSON.stringify(outputData)
+                }
+              }));
+              vd.add('info','sent function_call_output', { call_id: id });
+              // Then trigger response generation so the AI speaks about what happened
+              voice.dc?.send(JSON.stringify({ type: 'response.create' }));
+              vd.add('info','sent response.create');
+            } catch (e) {
+              vd.add('error','failed to send function output', { error: String(e?.message||e) });
+            }
+          }
+        } catch {}
+      }
+
+      // Show toast
+      function showToast(msg){
+        try {
+          const t = document.getElementById('toast');
+          if (!t) return;
+          t.textContent = String(msg||'');
+          t.classList.add('show');
+          clearTimeout(showToast._timer);
+          showToast._timer = setTimeout(()=>{ t.classList.remove('show'); }, 1200);
+        } catch {}
+      }
+
+      // Update mint clear button
+      function updateMintClear(){ 
+        try { const has = !!mintInput.value.trim(); mintClear.style.display = has ? 'inline-block' : 'none'; mintClear.disabled = !has; } catch {} 
+      }
+      
+      // Mint input and event listeners
+      try {
+        mintInput.addEventListener('input', updateMintClear);
+        mintInput.addEventListener('focus', updateMintClear);
+        mintInput.addEventListener('paste', (e)=>{ 
+          // Get pasted text and update immediately
+          setTimeout(()=> {
+            updateMintClear();
+            scheduleSuggest(); // Also trigger suggestions
+          }, 10);
+        });
+        // Use mousedown to beat blur/focus changes
+        const doClear = (e)=>{ try { if (e) { e.preventDefault(); e.stopPropagation(); } mintInput.value=''; mintInput.dispatchEvent(new Event('input', { bubbles: true })); updateMintClear(); const s=document.getElementById('mintSuggest'); if (s) { s.style.display='none'; s.innerHTML=''; } setTimeout(()=> mintInput.focus(), 0); } catch {} };
+        // Capture early to beat any other handlers
+        try { mintClear.addEventListener('pointerdown', doClear, { capture: true }); } catch {}
+        mintClear.addEventListener('mousedown', doClear, { capture: true });
+        mintClear.addEventListener('touchstart', doClear, { passive: true, capture: true });
+        mintClear.addEventListener('click', doClear, { capture: true });
+        mintInput.addEventListener('keydown', (e)=>{
+          // Escape: clear & close
+          if (e.key === 'Escape') {
+            e.stopPropagation(); e.preventDefault();
+            mintInput.value=''; updateMintClear();
+            const s=document.getElementById('mintSuggest'); if (s) { s.style.display='none'; s.innerHTML=''; }
+            return;
+          }
+          // Keyboard navigation in suggestions
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            if (!suggestionsVisible()) { renderMintSuggestions(mintInput.value); return; }
+            e.preventDefault();
+            const items = Array.from(document.querySelectorAll('#mintSuggest .item'));
+            if (!items.length) return;
+            if (e.key === 'ArrowDown') setSuggestActive((suggestIndex < 0 ? 0 : suggestIndex + 1));
+            if (e.key === 'ArrowUp') setSuggestActive((suggestIndex < 0 ? items.length - 1 : suggestIndex - 1));
+            return;
+          }
+          if (e.key === 'Enter') {
+            if (suggestionsVisible()) {
+              e.preventDefault(); pickSuggestActive();
+            }
+          }
+        });
+        // Remove hover behavior - only show X when there's actual content to clear
+      } catch {}
+
+      // Minimal HTML escaper for safe label injection
+      function esc(s){ 
+        return String(s||'').replace(/[&<>]/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); 
+      }
+
+      // Tab management
+      let activePanel = null; // Current active panel
+      const tabsContainer = document.getElementById('panelTabs'); // Container for tabs
+      
+      // Switch to panel
+      function switchToPanel(panel) {
+        // Hide all panels
+        panels.forEach(p => {
+          p.el.classList.remove('active');
+          if (p.tab) p.tab.classList.remove('active');
+        });
+        // Show selected panel
+        if (panel) {
+          panel.el.classList.add('active');
+          if (panel.tab) panel.tab.classList.add('active');
+          activePanel = panel;
+        }
+        // Show/hide tabs container
+        tabsContainer.style.display = panels.size > 0 ? 'flex' : 'none';
+      }
+      
+      // Panel class
+      class Panel {
+        constructor(mint){
+          this.mint = mint;
+          this.pid = null;
+          this.startedAt = 0; this.timerIv = null; this.active = true; this.finishedAt = 0;
+          // Initialize timeline data structure
+          this.timelineData = {
+            ohlcv: [],
+            tweets: [],
+            raidZones: [],
+            startTime: null,
+            endTime: null
+          };
+          this.el = document.createElement('div'); this.el.className = 'panel';
+          
+          // Create tab for this panel
+          this.tab = document.createElement('div');
+          this.tab.className = 'panel-tab';
+          this.tabLabel = document.createElement('span');
+          this.tabLabel.textContent = mint ? mint.slice(0, 6) + '…' : 'Token';
+          this.tab.appendChild(this.tabLabel);
+          
+          const tabClose = document.createElement('span');
+          tabClose.className = 'close';
+          tabClose.textContent = '×';
+          tabClose.onclick = (e) => {
+            e.stopPropagation();
+            if (this.mint) suppressedMints.add(this.mint);
+            this.collapse();
+            removePanel(this);
+          };
+          this.tab.appendChild(tabClose);
+          
+          this.tab.onclick = () => switchToPanel(this);
+          tabsContainer.appendChild(this.tab);
+          // header
+          const h = document.createElement('header');
+          const titleWrap = document.createElement('div'); titleWrap.className='titlewrap';
+          this.h_name = document.createElement('span'); this.h_name.className='title'; this.h_name.textContent='Token'; titleWrap.appendChild(this.h_name);
+          this.h_symbol = document.createElement('span'); this.h_symbol.className='symbol'; this.h_symbol.textContent='—'; titleWrap.appendChild(this.h_symbol);
+          h.appendChild(titleWrap);
+          this.h_addr = document.createElement('span'); this.h_addr.className='addr'; this.h_addr.style.cursor='pointer'; this.h_addr.title='Click to copy'; this.h_addr.textContent=(mint||'').slice(0,6)+'…'; h.appendChild(this.h_addr);
+          this.h_phase = document.createElement('span'); this.h_phase.className='status'; this.h_phase.textContent='Idle'; h.appendChild(this.h_phase);
+          this.h_timer = document.createElement('span'); this.h_timer.className='timer'; this.h_timer.textContent='00:00'; h.appendChild(this.h_timer);
+          // Minimal header: remove inline scores; keep resolver signal if needed later
+          this.h_conf = document.createElement('span'); this.h_conf.className='p-badge'; this.h_conf.style.display='none'; h.appendChild(this.h_conf);
+          // (market badges moved to dedicated section)
+          const spacer = document.createElement('div'); spacer.className='spacer'; h.appendChild(spacer);
+          // external links (hidden until mint set)
+          this.link_sol = document.createElement('a'); this.link_sol.textContent='Solscan'; this.link_sol.className='iconbtn'; this.link_sol.style.display='none'; this.link_sol.target='_blank'; h.appendChild(this.link_sol);
+          this.link_dex = document.createElement('a'); this.link_dex.textContent='Dex'; this.link_dex.className='iconbtn'; this.link_dex.style.display='none'; this.link_dex.target='_blank'; h.appendChild(this.link_dex);
+          // Controls: Hide and Kill
+          const hideBtn = document.createElement('button'); hideBtn.className='iconbtn warn'; hideBtn.textContent='–';
+          hideBtn.title='Hide panel';
+          hideBtn.addEventListener('click', ()=>{ if (this.mint) suppressedMints.add(this.mint); this.collapse(); removePanel(this); });
+          h.appendChild(hideBtn);
+          const killBtn = document.createElement('button'); killBtn.className='iconbtn danger'; killBtn.textContent='×';
+          killBtn.title='Kill run';
+          killBtn.addEventListener('click', ()=> this.killRun());
+          h.appendChild(killBtn);
+          this.el.appendChild(h);
+          // Market snapshot section (grid) under header
+          this.market = document.createElement('div'); this.market.className='market';
+          const mkMetric=(label)=>{ const box=document.createElement('div'); box.className='metric'; const l=document.createElement('div'); l.className='label'; l.textContent=label; const v=document.createElement('div'); v.className='value'; v.textContent='—'; box.appendChild(l); box.appendChild(v); return {box, v}; };
+          const mP=mkMetric('Price'), mF=mkMetric('FDV'), mL=mkMetric('Liquidity'), mV=mkMetric('Vol 24h');
+          this.market.appendChild(mP.box); this.market.appendChild(mF.box); this.market.appendChild(mL.box); this.market.appendChild(mV.box);
+          const sparkwrap=document.createElement('div'); sparkwrap.className='sparkwrap'; this.spark=document.createElement('canvas'); this.spark.width=200; this.spark.height=32; this.spark.style.background='transparent'; this.spark.style.border='1px solid #1a1e27'; this.spark.style.borderRadius='4px'; this.sparkLabel=document.createElement('div'); this.sparkLabel.className='label'; this.sparkLabel.textContent='Price (6h)'; sparkwrap.appendChild(this.spark); sparkwrap.appendChild(this.sparkLabel); this.market.appendChild(sparkwrap);
+          this.el.appendChild(this.market);
+          this.metricEls = { priceEl: mP.v, fdvEl: mF.v, liqEl: mL.v, volEl: mV.v };
+          // Token socials & links (sources only) — show above checklist+stream
+          this.links = document.createElement('div'); this.links.className='links'; this.el.appendChild(this.links);
+          // Memory digest context (always visible)
+          this.context = document.createElement('div'); this.context.className='context';
+          const ctxTitle = document.createElement('div'); ctxTitle.className='title'; ctxTitle.textContent='Memory Digest';
+          this.ctxBody = document.createElement('div'); this.ctxBody.className='body'; this.ctxBody.textContent='';
+          this.context.appendChild(ctxTitle); this.context.appendChild(this.ctxBody);
+          // side-by-side body: left (timeline), right (stream: terminal+narr)
+          this.timeline = document.createElement('div'); this.timeline.className='timeline';
+          this.term = document.createElement('div'); this.term.className='terminal';
+          this.narr = document.createElement('div'); this.narr.className='narr';
+          this.bodyGrid = document.createElement('div'); this.bodyGrid.className='bodygrid';
+          this.streamWrap = document.createElement('div'); this.streamWrap.className='streamwrap'; this.streamWrap.appendChild(this.term); this.streamWrap.appendChild(this.narr);
+          this.bodyGrid.appendChild(this.timeline); this.bodyGrid.appendChild(this.streamWrap); this.el.appendChild(this.bodyGrid);
+          // Memory Digest now lives below the side-by-side body
+          this.el.appendChild(this.context);
+          // full-width final report lives below body grid
+          this.finalWrap = document.createElement('div'); this.finalWrap.className='finalwrap'; this.el.appendChild(this.finalWrap);
+          // Additional signals (status/rationale/etc) below full-width sections
+          this.signals = document.createElement('div'); this.signals.className='signals'; this.el.appendChild(this.signals);
+          // stack: newest at top
+          panelsEl.prepend(this.el);
+          // typewriter
+          this.twQueue=[]; this.twriting=false; this.twCurrentLineEl=null; this.twBuf='';
+          this.sigItems=[];
+          this.linkSet=new Set();
+        }
+        async killRun(){
+          try {
+            // Resolve PID if unknown
+            let pid = this.pid;
+            if (!pid && this.mint) {
+              try {
+                const url = new URL(window.location.href); url.pathname = '/runs';
+                const res = await fetch(url.toString()); const j = await res.json();
+                if (j?.ok && Array.isArray(j.active)) {
+                  const hit = j.active.find(r => String(r.mint||'') === String(this.mint||''));
+                  if (hit) pid = hit.pid;
+                }
+              } catch {}
+            }
+            if (!pid) { showToast('No PID for this run'); return; }
+            const short = (this.mint||'').slice(0,8)+'…';
+            if (!window.confirm(`Kill analysis for ${short}?`)) return;
+            const delUrl = new URL(window.location.href); delUrl.pathname = `/runs/${pid}`;
+            const r = await fetch(delUrl.toString(), { method:'DELETE' });
+            if (r.ok) {
+              showToast('Run killed');
+              this.collapse(); removePanel(this);
+            } else {
+              const j = await r.json().catch(()=>({}));
+              showToast('Kill failed: ' + (j.error||r.status));
+            }
+          } catch (e) {
+            showToast('Kill error');
+          }
+        }
+        reset(mint){
+          this.mint = mint; this.h_name.textContent='Token'; this.h_symbol.textContent='—'; this.h_addr.textContent=(mint||'').slice(0,6)+'…';
+          this.h_phase.textContent='Idle'; this.h_timer.textContent='00:00';
+          this.setLinks();
+          this.timeline.innerHTML=''; this.term.innerHTML=''; this.narr.innerHTML=''; if (this.signals) this.signals.innerHTML=''; if (this.links) this.links.innerHTML='';
+          this.startedAt=0; this.active=true; this.finishedAt=0; this.twQueue=[]; this.twriting=false; this.twCurrentLineEl=null; this.twBuf='';
+          this.initSteps();
+          this.sigItems=[]; this.renderSignals();
+        }
+        updateTokenMeta(meta){
+          try {
+            if (meta?.name) this.h_name.textContent = meta.name;
+            if (meta?.symbol) {
+              this.h_symbol.textContent = meta.symbol;
+              // Update tab label with symbol
+              if (this.tabLabel) this.tabLabel.textContent = meta.symbol;
+            }
+            if (meta?.address) this.h_addr.textContent = (meta.address||'').slice(0,6)+'…';
+          } catch {}
+        }
+        initSteps(){
+          this.steps = new Map();
+          const order = ['bootstrap','socials','website','twitter','telegram','market','synthesis','finalize','persist'];
+          this.timeline.innerHTML='';
+          for (const s of order){
+            const row=document.createElement('div'); row.className='step'; row.dataset.step=s;
+            row.innerHTML=`<span class=\"dot\">○</span><span class=\"label\">${s}</span><span class=\"ms\"></span>`;
+            const details=document.createElement('div'); details.className='details';
+            // Toggle details on label click
+            try { row.querySelector('.label').addEventListener('click', ()=>{ details.classList.toggle('open'); }); } catch {}
+            this.timeline.appendChild(row); this.timeline.appendChild(details);
+            this.steps.set(s,{state:'pending',el:row,detailsEl:details,start:0,end:0});
+          }
+        }
+        setStepState(step, state, elapsed, opts={}){
+          const st=this.steps?.get(step); if(!st) return; st.state=state; const el=st.el; const dot=el.querySelector('.dot'); const ms=el.querySelector('.ms');
+          el.classList.remove('active','done','skipped','failed');
+          if(state==='active'){
+            el.classList.add('active');
+            if (dot) { dot.innerHTML=''; const sp=document.createElement('span'); sp.className='spinner'; dot.appendChild(sp); }
+            if (ms) ms.textContent='';
+          } else if(state==='done'){
+            if (opts && opts.ok===false) { el.classList.add('failed'); if (dot) dot.textContent='✖'; }
+            else { el.classList.add('done'); if (dot) dot.textContent='✓'; }
+            if (ms) ms.textContent = (typeof elapsed==='number'&&elapsed>=0)?`(${Math.round(elapsed)}ms)`:'';
+          } else if(state==='skipped'){
+            el.classList.add('skipped'); if (dot) dot.textContent='⏭'; if (ms) ms.textContent='(skipped)';
+          } else {
+            if (dot) dot.textContent='○'; if (ms) ms.textContent='';
+          }
+          if (opts && opts.title && ms) { ms.title = String(opts.title); }
+        }
+        addStepLog(step, text, cls){ try { const st=this.steps?.get(step); if (!st||!st.detailsEl) return; const line=document.createElement('div'); line.className='logline'; if(cls) line.classList.add(cls); line.textContent=String(text||''); st.detailsEl.appendChild(line); } catch {} }
+        ensureStepOpen(step){ try { const st=this.steps?.get(step); if (!st||!st.detailsEl) return; st.detailsEl.classList.add('open'); } catch {} }
+        appendSignal(text, tag){
+          const t = String(text||'');
+          // Pull out resolver confidence if present
+          try {
+            if (/^Resolved\b/i.test(t)) {
+              const m = t.match(/\((\d+)\%\)/);
+              if (m) { const pct = parseInt(m[1],10); if (!Number.isNaN(pct)) { this.h_conf.textContent = `Resolver ${pct}%`; this.h_conf.style.display='inline-block'; } }
+            }
+          } catch {}
+          this.sigItems.unshift({ text: t, tag: String(tag||'') });
+          this.renderSignals();
+        }
+        appendSourceLink(url, title, domain){
+          try {
+            if (!this.links) return;
+            if (this.linkSet && this.linkSet.has(url)) return;
+            if (this.linkSet) this.linkSet.add(url);
+            let display = title || '';
+            try {
+              const u = new URL(url, window.location.origin);
+              const host = (domain || u.hostname || '').replace(/^www\./,'');
+              const seg = (u.pathname || '/').split('/').filter(Boolean);
+              const first = seg[0] || '';
+              const second = seg[1] || '';
+              const hostLc = host.toLowerCase();
+              const ignore = new Set(['i','home','explore','settings','messages','notifications','status']);
+              if (!display) {
+                if (hostLc === 'x.com' || hostLc === 'twitter.com') {
+                  // Special-case X Communities: /i/communities/<id>
+                  if (first === 'i' && (second === 'communities' || second === 'community')) {
+                    display = title ? title : 'X Community';
+                  } else if (first && !ignore.has(first)) {
+                    display = '@' + first; // Profile handle
+                  } else {
+                    display = host || url;
+                  }
+                } else if ((hostLc === 't.me' || hostLc === 'telegram.me' || hostLc === 'telegram.org') && first) {
+                  display = '@' + first;
+                } else if (hostLc === 'discord.gg' && first) {
+                  display = 'discord/' + first;
+                } else {
+                  display = host || url;
+                }
+              }
+              const d = document.createElement('div'); d.className='sig';
+              const img = document.createElement('img'); img.className='fav'; img.loading = 'lazy';
+              const favDomain = host || u.hostname || '';
+              img.src = `https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(favDomain)}`;
+              img.alt = (host || '');
+              const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel='noopener noreferrer'; a.textContent = display;
+              a.title = title ? `${title} — ${host}` : url;
+              d.appendChild(img);
+              d.appendChild(a);
+              this.links.appendChild(d);
+            } catch {
+              const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel='noopener noreferrer'; a.textContent = title || domain || url;
+              const d = document.createElement('div'); d.className='sig'; d.appendChild(a); this.links.appendChild(d);
+            }
+          } catch {}
+        }
+        renderSignals(){
+          if (!this.signals) return;
+          // Expert is always ON: show all signals by default
+          const allowed = null;
+          const maxItems = 40;
+          this.signals.innerHTML='';
+          let count = 0;
+          for (const item of this.sigItems){
+            if (allowed && !allowed.has(item.tag||'')) continue;
+            const d=document.createElement('div'); d.className='sig'; d.innerHTML = (item.tag?`<span class=\"tag\">${item.tag}</span>`:'') + (item.text||'');
+            this.signals.appendChild(d);
+            count++; if (count>=maxItems) break;
+          }
+        }
+        pad(n){ return n<10? '0'+n : ''+n; }
+        startTimer(){ if (this.timerIv) clearInterval(this.timerIv); this.timerIv = setInterval(()=>{ if(!this.startedAt) return; const s=Math.floor((Date.now()-this.startedAt)/1000); const m=Math.floor(s/60), r=s%60; this.h_timer.textContent=this.pad(m)+':'+this.pad(r); }, 1000); }
+        setPhase(p){ this.h_phase.textContent = p; }
+        setStart(ts){ this.startedAt = Date.parse(ts || new Date()); this.startTimer(); this.setLinks(); }
+        updateMarket(m){
+          if(!m) return;
+          const fmtUSD = (v)=> {
+            if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+            const abs = Math.abs(v);
+            const dec = abs >= 1 ? 2 : (abs >= 0.01 ? 4 : 8);
+            return '$' + v.toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec });
+          };
+          if (m.price!=null) { this.metricEls.priceEl.textContent = fmtUSD(m.price); }
+          if (m.fdv!=null) { this.metricEls.fdvEl.textContent   = fmtUSD(m.fdv); }
+          if (m.liquidity!=null) { this.metricEls.liqEl.textContent = fmtUSD(m.liquidity); }
+          if (m.volume24h!=null) { this.metricEls.volEl.textContent = fmtUSD(m.volume24h); }
+        }
+        badgeClassForScore(val, kind){
+          try {
+            if (typeof val !== 'number') return '';
+            if (kind === 'risk') { if (val <= 3) return 'ok'; if (val <= 6) return 'warn'; return 'bad'; }
+            if (kind === 'branch') { if (val >= 70) return 'ok'; if (val >= 40) return 'warn'; return 'bad'; }
+          } catch {}
+          return '';
+        }
+        updateScores(a){ this.latestScores = { branch: a?.branchScore ?? null, risk: a?.riskScore ?? null }; }
+        setLinks(){
+          try {
+            const m = this.mint || '';
+            if (m && m.length>20) {
+              this.link_sol.href = 'https://solscan.io/token/' + encodeURIComponent(m);
+              this.link_dex.href = 'https://dexscreener.com/solana/' + encodeURIComponent(m);
+              this.link_sol.style.display='inline-block';
+              this.link_dex.style.display='inline-block';
+              // Kick off sparkline fetch/animate
+              this.loadSpark();
+            } else {
+              this.link_sol.style.display='none';
+              this.link_dex.style.display='none';
+            }
+          } catch {}
+        }
+        setContext(text){
+          try {
+            if (!text) { this.context.style.display='none'; return; }
+            this.context.style.display='block';
+            const raw = String(text||'').trim();
+            const lines = raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+            const kv = {};
+            for (const ln of lines) {
+              const m = ln.match(/^([A-Za-z]+)\s*:\s*(.*)$/);
+              if (m) { kv[m[1].toLowerCase()] = m[2]; }
+            }
+            // Build formatted view if we detected keys; else fallback to plain text
+            if (Object.keys(kv).length) {
+              const esc = (s)=>String(s||'').replace(/[&<>]/g, c=> ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+              const wrap = document.createElement('div');
+              const kvWrap = document.createElement('div'); kvWrap.className='kv';
+              const addRow = (label, valueEl)=>{
+                const l=document.createElement('div'); l.className='label'; l.textContent=label; const v=document.createElement('div'); v.className='value'; if (valueEl instanceof HTMLElement) v.appendChild(valueEl); else v.innerHTML = esc(valueEl); kvWrap.appendChild(l); kvWrap.appendChild(v);
+              };
+              if (kv.type) addRow('Type', kv.type);
+              if (kv.scores) addRow('Scores', kv.scores);
+              if (kv.narrative) {
+                const chips=document.createElement('div'); chips.className='chips';
+                const parts = kv.narrative.split(/[,|]/).map(s=>s.trim()).filter(Boolean).slice(0,8);
+                for (const p of parts) { const c=document.createElement('span'); c.className='chip'; c.textContent=p; chips.appendChild(c); }
+                addRow('Narrative', chips);
+              }
+              if (kv.pros) {
+                const ul=document.createElement('ul'); ul.className='pros-list';
+                kv.pros.split(/;|\u2022|\n/).map(s=>s.trim()).filter(Boolean).slice(0,10).forEach(it=>{ const li=document.createElement('li'); li.textContent=it; ul.appendChild(li); });
+                addRow('Pros', ul);
+              }
+              if (kv.cons) {
+                const ul=document.createElement('ul'); ul.className='cons-list';
+                kv.cons.split(/;|\u2022|\n/).map(s=>s.trim()).filter(Boolean).slice(0,10).forEach(it=>{ const li=document.createElement('li'); li.textContent=it; ul.appendChild(li); });
+                addRow('Cons', ul);
+              }
+              if (kv.mkt || kv.market) addRow('Market', kv.mkt || kv.market);
+              if (kv.notes) {
+                const ul=document.createElement('ul');
+                kv.notes.split(/\s*\|\s*|\n/).map(s=>s.trim()).filter(Boolean).slice(0,6).forEach(it=>{ const li=document.createElement('li'); li.textContent=it; ul.appendChild(li); });
+                addRow('Notes', ul);
+              }
+              wrap.appendChild(kvWrap);
+              this.ctxBody.innerHTML='';
+              this.ctxBody.appendChild(wrap);
+            } else {
+              this.ctxBody.textContent = raw;
+            }
+          } catch {}
+        }
+        async loadSpark(){
+          try {
+            const url = new URL(window.location.href); url.pathname = '/ohlcv'; url.search = ''; url.searchParams.set('mint', this.mint); url.searchParams.set('hours','6');
+            const r = await fetch(url.toString()); if (!r.ok) { this.sparkLabel.textContent='Sparkline unavailable'; this.sparkLabel.style.color='#98a6b3'; return; }
+            const j = await r.json();
+            if (!j?.ok || !Array.isArray(j.series)) {
+              if (j && j.error === 'missing_birdeye_key') {
+                this.sparkLabel.textContent = 'Sparkline requires Birdeye key';
+                this.sparkLabel.style.color = '#98a6b3';
+              } else {
+                this.sparkLabel.textContent='Sparkline unavailable';
+                this.sparkLabel.style.color = '#98a6b3';
+              }
+              return;
+            }
+            // Store OHLCV data for timeline if available
+            if (this.timelineData) {
+              this.timelineData.ohlcv = j.series.map(p => ({
+                time: p.unixTime * 1000, // Convert to milliseconds
+                open: Number(p.o),
+                high: Number(p.h),
+                low: Number(p.l),
+                close: Number(p.c),
+                volume: Number(p.v) || 0
+              }));
+              // Redraw timeline if we already have tweet data
+              if (this.timelineCanvas && this.lastAnalysisData) {
+                try { this.renderTimeline(this.lastAnalysisData); } catch {}
+              }
+            }
+            const prices = j.series.map(p=>Number(p.c)).filter(x=>Number.isFinite(x));
+            this.drawSparkline(prices);
+            // Compute 6h change
+            if (prices.length >= 2) {
+              const start = prices[0], end = prices[prices.length-1];
+              const pct = ((end - start) / (start || 1)) * 100;
+              const sign = pct > 0 ? '+' : '';
+              this.sparkLabel.textContent = `6h: ${sign}${pct.toFixed(2)}%`;
+              this.sparkLabel.style.color = pct >= 0 ? '#7ce38b' : '#ff7b7b';
+            } else {
+              this.sparkLabel.textContent = '6h';
+            }
+          } catch {}
+        }
+        drawSparkline(vals){
+          try {
+            const c = this.spark; if (!c || !vals || vals.length<2) return; const ctx = c.getContext('2d');
+            // Downsample to fit width
+            const maxPts = Math.min(c.width, 160);
+            const step = Math.ceil(vals.length / maxPts);
+            const data = []; for (let i=0;i<vals.length;i+=step) data.push(vals[i]);
+            const w = c.width, h = c.height, pad=2;
+            const min = Math.min(...data), max = Math.max(...data);
+            const scaleX = (i)=> pad + (i/(data.length-1))*(w-2*pad);
+            const scaleY = (v)=> h - pad - ((v - min)/(max-min||1))*(h-2*pad);
+            ctx.clearRect(0,0,w,h);
+            // Gradient stroke
+            const grad = ctx.createLinearGradient(0,0,0,h);
+            grad.addColorStop(0,'#7ce38b'); grad.addColorStop(1,'#2c3242');
+            ctx.lineWidth = 1.5; ctx.strokeStyle = grad; ctx.beginPath();
+            // Animate reveal
+            let i=0; const drawStep=()=>{ const n = Math.min(i+4, data.length); ctx.beginPath(); for(let k=0;k<n;k++){ const x=scaleX(k), y=scaleY(data[k]); if(k===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);} ctx.stroke(); i=n; if(i<data.length) requestAnimationFrame(drawStep); };
+            drawStep();
+          } catch {}
+        }
+        // Enhanced timeline with OHLCV + tweets + raid zones
+        initTimeline(){
+          // Create canvas for timeline visualization
+          this.timelineCanvas = document.createElement('canvas');
+          this.timelineCanvas.width = 800;
+          this.timelineCanvas.height = 200;
+          this.timelineCanvas.style.width = '100%';
+          this.timelineCanvas.style.maxWidth = '800px';
+          this.timelineCanvas.style.height = '200px';
+          this.timelineCanvas.style.background = '#0b0c10';
+          this.timelineCanvas.style.border = '1px solid #1a1e27';
+          this.timelineCanvas.style.borderRadius = '6px';
+          this.timelineCanvas.style.cursor = 'crosshair';
+          
+          // Container for timeline with label
+          const timelineWrap = document.createElement('div');
+          timelineWrap.className = 'timeline-wrap';
+          timelineWrap.style.padding = '8px';
+          timelineWrap.style.borderTop = '1px solid #1a1e27';
+          
+          const timelineLabel = document.createElement('div');
+          timelineLabel.style.fontSize = '12px';
+          timelineLabel.style.color = '#9fb2c8';
+          timelineLabel.style.marginBottom = '8px';
+          timelineLabel.textContent = 'Activity Timeline (6h)';
+          
+          timelineWrap.appendChild(timelineLabel);
+          timelineWrap.appendChild(this.timelineCanvas);
+          
+          // Insert after market metrics, before body grid
+          this.el.insertBefore(timelineWrap, this.bodyGrid);
+          
+          // Tooltip for hover details
+          this.timelineTooltip = document.createElement('div');
+          this.timelineTooltip.style.position = 'absolute';
+          this.timelineTooltip.style.display = 'none';
+          this.timelineTooltip.style.background = '#0f1117';
+          this.timelineTooltip.style.border = '1px solid #2c3242';
+          this.timelineTooltip.style.borderRadius = '4px';
+          this.timelineTooltip.style.padding = '6px 8px';
+          this.timelineTooltip.style.fontSize = '11px';
+          this.timelineTooltip.style.color = '#e6edf3';
+          this.timelineTooltip.style.pointerEvents = 'none';
+          this.timelineTooltip.style.zIndex = '1000';
+          document.body.appendChild(this.timelineTooltip);
+          
+          // Mouse interaction
+          this.timelineCanvas.addEventListener('mousemove', (e) => this.handleTimelineHover(e));
+          this.timelineCanvas.addEventListener('mouseleave', () => {
+            this.timelineTooltip.style.display = 'none';
+          });
+          
+          // Storage for timeline data
+          this.timelineData = {
+            ohlcv: [],
+            tweets: [],
+            raidZones: [],
+            startTime: null,
+            endTime: null
+          };
+        }
+        renderTimeline(analysisData){
+          if (!this.timelineCanvas) this.initTimeline();
+          const ctx = this.timelineCanvas.getContext('2d');
+          const w = this.timelineCanvas.width;
+          const h = this.timelineCanvas.height;
+          
+          // Extract data from analysis
+          const tweets = analysisData?.twitter?.recentTweets || [];
+          const activityTimeline = analysisData?.activityPriceTimeline || [];
+          
+          // Parse tweet timestamps
+          this.timelineData.tweets = tweets.map(t => ({
+            time: new Date(t.timestamp).getTime(),
+            author: t.author?.handle || 'unknown',
+            text: (t.text || '').slice(0, 50),
+            likes: parseInt(t.likes) || 0,
+            verified: t.author?.isVerified || false
+          }));
+          
+          // Parse raid zones from activity timeline
+          this.timelineData.raidZones = activityTimeline.map(zone => {
+            const [startStr, endStr] = zone.window.split('–');
+            return {
+              start: new Date(startStr).getTime(),
+              end: new Date(endStr).getTime(),
+              description: zone.tweets,
+              leadLag: zone.leadLag
+            };
+          });
+          
+          // Determine time range (6 hours)
+          const now = Date.now();
+          this.timelineData.endTime = now;
+          this.timelineData.startTime = now - (6 * 60 * 60 * 1000);
+          
+          // Clear canvas
+          ctx.clearRect(0, 0, w, h);
+          
+          // Draw raid zones (background heat zones)
+          this.timelineData.raidZones.forEach(zone => {
+            const x1 = this.timeToX(zone.start, w);
+            const x2 = this.timeToX(zone.end, w);
+            if (x1 >= 0 && x2 <= w) {
+              const gradient = ctx.createLinearGradient(x1, 0, x2, 0);
+              gradient.addColorStop(0, 'rgba(242, 204, 96, 0.1)');
+              gradient.addColorStop(0.5, 'rgba(242, 204, 96, 0.2)');
+              gradient.addColorStop(1, 'rgba(242, 204, 96, 0.1)');
+              ctx.fillStyle = gradient;
+              ctx.fillRect(x1, 0, x2 - x1, h);
+            }
+          });
+          
+          // Draw OHLCV candlesticks if available
+          if (this.timelineData.ohlcv && this.timelineData.ohlcv.length > 0) {
+            const candles = this.timelineData.ohlcv;
+            const priceMin = Math.min(...candles.map(c => c.low));
+            const priceMax = Math.max(...candles.map(c => c.high));
+            const priceRange = priceMax - priceMin || 1;
+            
+            // Draw candles
+            candles.forEach(candle => {
+              const x = this.timeToX(candle.time, w);
+              if (x >= 0 && x <= w) {
+                const yHigh = 20 + (1 - (candle.high - priceMin) / priceRange) * (h - 60);
+                const yLow = 20 + (1 - (candle.low - priceMin) / priceRange) * (h - 60);
+                const yOpen = 20 + (1 - (candle.open - priceMin) / priceRange) * (h - 60);
+                const yClose = 20 + (1 - (candle.close - priceMin) / priceRange) * (h - 60);
+                
+                // Wick
+                ctx.strokeStyle = '#2c3242';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x, yHigh);
+                ctx.lineTo(x, yLow);
+                ctx.stroke();
+                
+                // Body
+                const bodyHeight = Math.abs(yClose - yOpen) || 1;
+                const bodyY = Math.min(yOpen, yClose);
+                ctx.fillStyle = candle.close >= candle.open ? '#7ce38b' : '#ff7b7b';
+                ctx.fillRect(x - 2, bodyY, 4, bodyHeight);
+              }
+            });
+            
+            // Volume bars at bottom
+            const volMax = Math.max(...candles.map(c => c.volume));
+            if (volMax > 0) {
+              candles.forEach(candle => {
+                const x = this.timeToX(candle.time, w);
+                if (x >= 0 && x <= w) {
+                  const volHeight = (candle.volume / volMax) * 20;
+                  ctx.fillStyle = 'rgba(109, 213, 250, 0.2)';
+                  ctx.fillRect(x - 2, h - volHeight, 4, volHeight);
+                }
+              });
+            }
+          }
+          
+          // Store analysis data for future redraws
+          this.lastAnalysisData = analysisData;
+          
+          // Draw tweet markers
+          ctx.strokeStyle = '#2c3242';
+          ctx.lineWidth = 1;
+          this.timelineData.tweets.forEach(tweet => {
+            const x = this.timeToX(tweet.time, w);
+            if (x >= 0 && x <= w) {
+              // Vertical line for tweet
+              ctx.beginPath();
+              ctx.moveTo(x, h - 20);
+              ctx.lineTo(x, h);
+              ctx.stroke();
+              
+              // Circle marker (bigger for verified)
+              const radius = tweet.verified ? 4 : 3;
+              ctx.beginPath();
+              ctx.arc(x, h - 20, radius, 0, Math.PI * 2);
+              ctx.fillStyle = tweet.verified ? '#6dd5fa' : '#9fb2c8';
+              ctx.fill();
+              
+              // Intensity based on likes
+              if (tweet.likes > 10) {
+                ctx.beginPath();
+                ctx.arc(x, h - 20, radius + 2, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(109, 213, 250, 0.3)';
+                ctx.stroke();
+              }
+            }
+          });
+          
+          // Time axis labels
+          ctx.fillStyle = '#98a6b3';
+          ctx.font = '10px monospace';
+          for (let i = 0; i <= 6; i++) {
+            const time = this.timelineData.startTime + (i * 60 * 60 * 1000);
+            const x = this.timeToX(time, w);
+            const label = new Date(time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            ctx.fillText(label, x - 20, h - 5);
+          }
+        }
+        timeToX(timestamp, width){
+          const range = this.timelineData.endTime - this.timelineData.startTime;
+          const offset = timestamp - this.timelineData.startTime;
+          return (offset / range) * width;
+        }
+        handleTimelineHover(e){
+          const rect = this.timelineCanvas.getBoundingClientRect();
+          const x = (e.clientX - rect.left) * (this.timelineCanvas.width / rect.width);
+          const time = this.timelineData.startTime + (x / this.timelineCanvas.width) * (this.timelineData.endTime - this.timelineData.startTime);
+          
+          // Find nearby tweets
+          const nearbyTweets = this.timelineData.tweets.filter(t => {
+            const tx = this.timeToX(t.time, this.timelineCanvas.width);
+            return Math.abs(tx - x) < 10;
+          });
+          
+          if (nearbyTweets.length > 0) {
+            const tweet = nearbyTweets[0];
+            this.timelineTooltip.innerHTML = `
+              <div style="font-weight:600">${tweet.author}${tweet.verified ? ' ✓' : ''}</div>
+              <div style="color:#9fb2c8;margin:2px 0">${tweet.text}...</div>
+              <div style="color:#98a6b3">❤️ ${tweet.likes} • ${new Date(tweet.time).toLocaleTimeString()}</div>
+            `;
+            this.timelineTooltip.style.display = 'block';
+            this.timelineTooltip.style.left = e.clientX + 10 + 'px';
+            this.timelineTooltip.style.top = e.clientY - 40 + 'px';
+          } else {
+            // Check for raid zones
+            const inZone = this.timelineData.raidZones.find(z => time >= z.start && time <= z.end);
+            if (inZone) {
+              this.timelineTooltip.innerHTML = `
+                <div style="color:#f2cc60;font-weight:600">Raid Activity Zone</div>
+                <div style="color:#9fb2c8;margin:2px 0">${inZone.description}</div>
+                <div style="color:#98a6b3">Lead/Lag: ${inZone.leadLag}</div>
+              `;
+              this.timelineTooltip.style.display = 'block';
+              this.timelineTooltip.style.left = e.clientX + 10 + 'px';
+              this.timelineTooltip.style.top = e.clientY - 40 + 'px';
+            } else {
+              this.timelineTooltip.style.display = 'none';
+            }
+          }
+        }
+        log(text, cls){ this.twCurrentLineClass = cls || ''; this.enqueueType(String(text) + '\n'); }
+        logInstant(text, cls){ const line=document.createElement('div'); line.className='line '+(cls||''); line.textContent=String(text); this.term.appendChild(line); this.term.scrollTop=this.term.scrollHeight; }
+        appendNarrative(chunk){
+          if (!chunk) return;
+          if (!this.narrLineEl) { this.narrLineEl = document.createElement('div'); this.narr.appendChild(this.narrLineEl); }
+          this.narrLineEl.textContent = (this.narrLineEl.textContent || '') + chunk;
+          this.narr.scrollTop = this.narr.scrollHeight;
+        }
+        renderFinalReport(a, filePath){ try {
+          this.finalWrap.innerHTML = '';
+          const hdr=document.createElement('h3'); hdr.textContent='Final Report - Complete Analysis'; this.finalWrap.appendChild(hdr);
+          const box=document.createElement('div'); box.className='final';
+          
+          // Helper to create collapsible sections
+          const createSection = (title, contentFn) => {
+            const section = document.createElement('div');
+            section.style.marginBottom = '12px';
+            section.style.borderBottom = '1px solid #2a2e37';
+            section.style.paddingBottom = '8px';
+            
+            const header = document.createElement('h3');
+            header.textContent = '▼ ' + title;
+            header.style.cursor = 'pointer';
+            header.style.color = '#6b8fb2';
+            header.style.marginBottom = '8px';
+            header.style.fontSize = '14px';
+            header.style.fontWeight = 'bold';
+            
+            const content = document.createElement('div');
+            contentFn(content);
+            
+            header.onclick = () => {
+              const isCollapsed = content.style.display === 'none';
+              content.style.display = isCollapsed ? 'block' : 'none';
+              header.textContent = (isCollapsed ? '▼ ' : '▶ ') + title;
+            };
+            
+            section.appendChild(header);
+            section.appendChild(content);
+            return section;
+          };
+          
+          // Helper to display key-value pairs
+          const addKV = (parent, label, value, color) => {
+            if (value == null) return;
+            const row = document.createElement('div');
+            row.style.marginBottom = '4px';
+            row.style.display = 'grid';
+            row.style.gridTemplateColumns = '180px 1fr';
+            row.style.gap = '8px';
+            
+            const labelEl = document.createElement('span');
+            labelEl.textContent = label + ':';
+            labelEl.style.color = '#9fb2c8';
+            labelEl.style.fontSize = '12px';
+            
+            const valueEl = document.createElement('span');
+            valueEl.style.color = color || '#ffffff';
+            valueEl.style.fontSize = '12px';
+            
+            if (typeof value === 'object') {
+              valueEl.textContent = JSON.stringify(value, null, 2);
+              valueEl.style.whiteSpace = 'pre-wrap';
+              valueEl.style.fontFamily = 'monospace';
+            } else {
+              valueEl.textContent = String(value);
+            }
+            
+            row.appendChild(labelEl);
+            row.appendChild(valueEl);
+            parent.appendChild(row);
+          };
+          
+          // Helper for arrays/lists
+          const addList = (parent, items, prefix = '• ') => {
+            if (!Array.isArray(items) || !items.length) return;
+            items.forEach(item => {
+              const li = document.createElement('div');
+              li.style.marginLeft = '12px';
+              li.style.marginBottom = '2px';
+              li.style.fontSize = '12px';
+              li.textContent = prefix + String(item);
+              parent.appendChild(li);
+            });
+          };
+          
+          // 1. Token Identity & Metadata
+          box.appendChild(createSection('Token Identity & Metadata', (content) => {
+            addKV(content, 'Token Address', a.mint);
+            addKV(content, 'Symbol', a.symbol);
+            addKV(content, 'Name', a.name);
+            addKV(content, 'Timestamp', a.timestamp);
+            addKV(content, 'Model', a.model);
+            addKV(content, 'Version', a.version);
+            if (a.metadata) {
+              addKV(content, 'Source', a.metadata.source);
+              addKV(content, 'Runtime (ms)', a.metadata.runtime_ms);
+              addKV(content, 'Reasoning Level', a.metadata.reasoning_level);
+              if (a.metadata.flags) {
+                const flagsDiv = document.createElement('div');
+                flagsDiv.style.marginTop = '4px';
+                addKV(flagsDiv, 'Flags', a.metadata.flags.join(', '));
+                content.appendChild(flagsDiv);
+              }
+            }
+          }));
+          
+          // 2. Market Data
+          box.appendChild(createSection('Market Data', (content) => {
+            if (a.market_data) {
+              const md = a.market_data;
+              addKV(content, 'Price USD', md.price_usd ? `$${md.price_usd.toFixed(8)}` : 'N/A');
+              addKV(content, 'Market Cap', md.market_cap ? `$${md.market_cap.toLocaleString()}` : 'N/A');
+              addKV(content, 'FDV', md.fdv ? `$${md.fdv.toLocaleString()}` : 'N/A');
+              addKV(content, 'Liquidity', md.liquidity_usd ? `$${md.liquidity_usd.toLocaleString()}` : 'N/A');
+              addKV(content, 'Volume 24h', md.volume_24h ? `$${md.volume_24h.toLocaleString()}` : 'N/A');
+              addKV(content, 'Price Change 24h', md.price_change_24h ? `${md.price_change_24h > 0 ? '+' : ''}${md.price_change_24h.toFixed(2)}%` : 'N/A', md.price_change_24h > 0 ? '#4ade80' : '#f87171');
+              addKV(content, 'Holders', md.holders ? md.holders.toLocaleString() : 'N/A');
+              addKV(content, 'Top 10 Holdings', md.top_10_holdings_pct ? `${md.top_10_holdings_pct.toFixed(1)}%` : 'N/A');
+              addKV(content, 'DEX', md.dex);
+              addKV(content, 'Pool Address', md.pool_address);
+            }
+          }));
+          
+          // 3. Risk Assessment
+          box.appendChild(createSection('Risk Assessment', (content) => {
+            addKV(content, 'Risk Score', a.risk_score, a.risk_score > 70 ? '#4ade80' : a.risk_score > 40 ? '#fbbf24' : '#f87171');
+            if (a.risk_assessment) {
+              const ra = a.risk_assessment;
+              addKV(content, 'Overall Risk', ra.overall, ra.overall === 'LOW' ? '#4ade80' : ra.overall === 'MODERATE' ? '#fbbf24' : '#f87171');
+              addKV(content, 'Liquidity Risk', ra.liquidity_risk);
+              addKV(content, 'Holder Concentration', ra.holder_concentration);
+              addKV(content, 'Social Sentiment', ra.social_sentiment);
+              addKV(content, 'Rug Probability', ra.rug_probability ? `${(ra.rug_probability * 100).toFixed(1)}%` : 'N/A', ra.rug_probability > 0.5 ? '#f87171' : ra.rug_probability > 0.2 ? '#fbbf24' : '#4ade80');
+              if (ra.factors && ra.factors.length) {
+                const factorsHeader = document.createElement('div');
+                factorsHeader.textContent = 'Risk Factors:';
+                factorsHeader.style.color = '#9fb2c8';
+                factorsHeader.style.fontSize = '12px';
+                factorsHeader.style.marginTop = '8px';
+                factorsHeader.style.marginBottom = '4px';
+                content.appendChild(factorsHeader);
+                addList(content, ra.factors);
+              }
+            }
+          }));
+          
+          // 4. Social Analysis
+          box.appendChild(createSection('Social Analysis', (content) => {
+            if (a.social_analysis) {
+              const sa = a.social_analysis;
+              
+              // Twitter/X
+              if (sa.twitter) {
+                const twitterDiv = document.createElement('div');
+                twitterDiv.style.marginBottom = '8px';
+                const twitterHeader = document.createElement('h4');
+                twitterHeader.textContent = 'Twitter/X';
+                twitterHeader.style.color = '#6b8fb2';
+                twitterHeader.style.fontSize = '13px';
+                twitterHeader.style.marginBottom = '4px';
+                twitterDiv.appendChild(twitterHeader);
+                
+                addKV(twitterDiv, 'Handle', sa.twitter.handle);
+                addKV(twitterDiv, 'Followers', sa.twitter.followers ? sa.twitter.followers.toLocaleString() : 'N/A');
+                addKV(twitterDiv, 'Tweets (24h)', sa.twitter.tweets_24h);
+                addKV(twitterDiv, 'Mentions (24h)', sa.twitter.mentions_24h);
+                addKV(twitterDiv, 'Engagement Rate', sa.twitter.engagement_rate ? `${sa.twitter.engagement_rate}%` : 'N/A');
+                addKV(twitterDiv, 'Sentiment Score', sa.twitter.sentiment_score);
+                
+                if (sa.twitter.key_influencers && sa.twitter.key_influencers.length) {
+                  const infHeader = document.createElement('div');
+                  infHeader.textContent = 'Key Influencers:';
+                  infHeader.style.color = '#9fb2c8';
+                  infHeader.style.fontSize = '12px';
+                  infHeader.style.marginTop = '4px';
+                  twitterDiv.appendChild(infHeader);
+                  sa.twitter.key_influencers.forEach(inf => {
+                    addKV(twitterDiv, inf.handle, `${inf.followers.toLocaleString()} followers - ${inf.sentiment}`);
+                  });
+                }
+                content.appendChild(twitterDiv);
+              }
+              
+              // Telegram
+              if (sa.telegram) {
+                const telegramDiv = document.createElement('div');
+                telegramDiv.style.marginBottom = '8px';
+                const telegramHeader = document.createElement('h4');
+                telegramHeader.textContent = 'Telegram';
+                telegramHeader.style.color = '#6b8fb2';
+                telegramHeader.style.fontSize = '13px';
+                telegramHeader.style.marginBottom = '4px';
+                telegramDiv.appendChild(telegramHeader);
+                
+                addKV(telegramDiv, 'URL', sa.telegram.url);
+                addKV(telegramDiv, 'Members', sa.telegram.members ? sa.telegram.members.toLocaleString() : 'N/A');
+                addKV(telegramDiv, 'Active (24h)', sa.telegram.active_24h);
+                addKV(telegramDiv, 'Messages/Hour', sa.telegram.messages_per_hour);
+                addKV(telegramDiv, 'Bot Activity', sa.telegram.bot_activity);
+                addKV(telegramDiv, 'Sentiment', sa.telegram.sentiment);
+                content.appendChild(telegramDiv);
+              }
+              
+              // Website
+              if (sa.website) {
+                const websiteDiv = document.createElement('div');
+                websiteDiv.style.marginBottom = '8px';
+                const websiteHeader = document.createElement('h4');
+                websiteHeader.textContent = 'Website';
+                websiteHeader.style.color = '#6b8fb2';
+                websiteHeader.style.fontSize = '13px';
+                websiteHeader.style.marginBottom = '4px';
+                websiteDiv.appendChild(websiteHeader);
+                
+                addKV(websiteDiv, 'URL', sa.website.url);
+                addKV(websiteDiv, 'Status', sa.website.status, sa.website.status === 'ACTIVE' ? '#4ade80' : '#f87171');
+                addKV(websiteDiv, 'SSL Valid', sa.website.ssl_valid ? 'Yes' : 'No', sa.website.ssl_valid ? '#4ade80' : '#f87171');
+                addKV(websiteDiv, 'Content Quality', sa.website.content_quality);
+                addKV(websiteDiv, 'Has Roadmap', sa.website.has_roadmap ? 'Yes' : 'No');
+                addKV(websiteDiv, 'Has Tokenomics', sa.website.has_tokenomics ? 'Yes' : 'No');
+                addKV(websiteDiv, 'Has Team', sa.website.has_team ? 'Yes' : 'No');
+                addKV(websiteDiv, 'Last Updated', sa.website.last_updated);
+                content.appendChild(websiteDiv);
+              }
+              
+              // Discord
+              if (sa.discord) {
+                addKV(content, 'Discord', sa.discord.found ? 'Found' : 'Not Found');
+              }
+            }
+          }));
+          
+          // 5. Technical Analysis
+          box.appendChild(createSection('Technical Analysis', (content) => {
+            if (a.technical_analysis) {
+              const ta = a.technical_analysis;
+              
+              // Price Action
+              if (ta.price_action) {
+                const priceDiv = document.createElement('div');
+                priceDiv.style.marginBottom = '8px';
+                const priceHeader = document.createElement('h4');
+                priceHeader.textContent = 'Price Action';
+                priceHeader.style.color = '#6b8fb2';
+                priceHeader.style.fontSize = '13px';
+                priceHeader.style.marginBottom = '4px';
+                priceDiv.appendChild(priceHeader);
+                
+                addKV(priceDiv, 'Trend', ta.price_action.trend, ta.price_action.trend === 'UPWARD' ? '#4ade80' : ta.price_action.trend === 'DOWNWARD' ? '#f87171' : '#fbbf24');
+                addKV(priceDiv, 'Support', ta.price_action.support ? `$${ta.price_action.support.toFixed(8)}` : 'N/A');
+                addKV(priceDiv, 'Resistance', ta.price_action.resistance ? `$${ta.price_action.resistance.toFixed(8)}` : 'N/A');
+                addKV(priceDiv, 'RSI', ta.price_action.rsi, ta.price_action.rsi > 70 ? '#f87171' : ta.price_action.rsi < 30 ? '#4ade80' : '#fbbf24');
+                addKV(priceDiv, 'Volume Trend', ta.price_action.volume_trend);
+                content.appendChild(priceDiv);
+              }
+              
+              // On-Chain Metrics
+              if (ta.on_chain) {
+                const onchainDiv = document.createElement('div');
+                onchainDiv.style.marginBottom = '8px';
+                const onchainHeader = document.createElement('h4');
+                onchainHeader.textContent = 'On-Chain Metrics';
+                onchainHeader.style.color = '#6b8fb2';
+                onchainHeader.style.fontSize = '13px';
+                onchainHeader.style.marginBottom = '4px';
+                onchainDiv.appendChild(onchainHeader);
+                
+                addKV(onchainDiv, 'Unique Buyers (24h)', ta.on_chain.unique_buyers_24h);
+                addKV(onchainDiv, 'Unique Sellers (24h)', ta.on_chain.unique_sellers_24h);
+                addKV(onchainDiv, 'Buy/Sell Ratio', ta.on_chain.buy_sell_ratio, ta.on_chain.buy_sell_ratio > 1.5 ? '#4ade80' : ta.on_chain.buy_sell_ratio < 0.7 ? '#f87171' : '#fbbf24');
+                addKV(onchainDiv, 'Whale Activity', ta.on_chain.whale_activity);
+                addKV(onchainDiv, 'Smart Money Flow', ta.on_chain.smart_money_flow);
+                content.appendChild(onchainDiv);
+              }
+            }
+          }));
+          
+          // 6. Content Analysis
+          box.appendChild(createSection('Content Analysis', (content) => {
+            if (a.content_analysis) {
+              const ca = a.content_analysis;
+              addKV(content, 'Description', ca.description);
+              addKV(content, 'Narrative Strength', ca.narrative_strength);
+              addKV(content, 'Meme Potential', ca.meme_potential);
+              addKV(content, 'Utility', ca.utility || 'None');
+              
+              if (ca.partnerships && ca.partnerships.length) {
+                const partHeader = document.createElement('div');
+                partHeader.textContent = 'Partnerships:';
+                partHeader.style.color = '#9fb2c8';
+                partHeader.style.fontSize = '12px';
+                partHeader.style.marginTop = '4px';
+                content.appendChild(partHeader);
+                addList(content, ca.partnerships);
+              }
+              
+              if (ca.upcoming_catalysts && ca.upcoming_catalysts.length) {
+                const catHeader = document.createElement('div');
+                catHeader.textContent = 'Upcoming Catalysts:';
+                catHeader.style.color = '#9fb2c8';
+                catHeader.style.fontSize = '12px';
+                catHeader.style.marginTop = '4px';
+                content.appendChild(catHeader);
+                addList(content, ca.upcoming_catalysts);
+              }
+            }
+          }));
+          
+          // 7. AI Analysis Summary
+          box.appendChild(createSection('AI Analysis Summary', (content) => {
+            if (a.llm_summary) {
+              const summaryDiv = document.createElement('div');
+              summaryDiv.textContent = a.llm_summary;
+              summaryDiv.style.fontSize = '12px';
+              summaryDiv.style.lineHeight = '1.5';
+              summaryDiv.style.color = '#ffffff';
+              summaryDiv.style.backgroundColor = '#1a1e27';
+              summaryDiv.style.padding = '8px';
+              summaryDiv.style.borderRadius = '4px';
+              content.appendChild(summaryDiv);
+            }
+            
+            // Legacy summary fields
+            if (a.summary || a.projectSummary) {
+              const legacyDiv = document.createElement('div');
+              legacyDiv.style.marginTop = '8px';
+              addKV(legacyDiv, 'TL;DR', a.summary || a.projectSummary);
+              content.appendChild(legacyDiv);
+            }
+            
+            addKV(content, 'Current Status', a.currentStatus);
+            if (a.communicationAnalysis) {
+              addKV(content, 'Communication Analysis', a.communicationAnalysis);
+            }
+            addKV(content, 'Why (Branch)', a.branchWhy);
+            addKV(content, 'Why (Risk)', a.riskWhy);
+          }));
+          
+          // 8. Warnings & Flags
+          box.appendChild(createSection('Warnings & Flags', (content) => {
+            // Warnings
+            if (a.warnings && a.warnings.length) {
+              const warnHeader = document.createElement('h4');
+              warnHeader.textContent = '⚠️ Warnings';
+              warnHeader.style.color = '#f87171';
+              warnHeader.style.fontSize = '13px';
+              warnHeader.style.marginBottom = '4px';
+              content.appendChild(warnHeader);
+              addList(content, a.warnings, '⚠ ');
+            }
+            
+            // Red Flags
+            if (a.redFlags && a.redFlags.length) {
+              const redHeader = document.createElement('h4');
+              redHeader.textContent = '🚩 Red Flags';
+              redHeader.style.color = '#f87171';
+              redHeader.style.fontSize = '13px';
+              redHeader.style.marginTop = '8px';
+              redHeader.style.marginBottom = '4px';
+              content.appendChild(redHeader);
+              addList(content, a.redFlags, '• ');
+            }
+            
+            // Green Flags
+            if (a.green_flags && a.green_flags.length) {
+              const greenHeader = document.createElement('h4');
+              greenHeader.textContent = '✅ Green Flags';
+              greenHeader.style.color = '#4ade80';
+              greenHeader.style.fontSize = '13px';
+              greenHeader.style.marginTop = '8px';
+              greenHeader.style.marginBottom = '4px';
+              content.appendChild(greenHeader);
+              addList(content, a.green_flags, '✓ ');
+            } else if (a.greenFlags && a.greenFlags.length) {
+              const greenHeader = document.createElement('h4');
+              greenHeader.textContent = '✅ Green Flags';
+              greenHeader.style.color = '#4ade80';
+              greenHeader.style.fontSize = '13px';
+              greenHeader.style.marginTop = '8px';
+              greenHeader.style.marginBottom = '4px';
+              content.appendChild(greenHeader);
+              addList(content, a.greenFlags, '✓ ');
+            }
+          }));
+          
+          // 9. Final Scores & Recommendation
+          box.appendChild(createSection('Final Scores & Recommendation', (content) => {
+            // Scores
+            if (this.latestScores && (this.latestScores.branch != null || this.latestScores.risk != null)) {
+              const scoreDiv = document.createElement('div');
+              scoreDiv.style.fontSize = '14px';
+              scoreDiv.style.fontWeight = 'bold';
+              scoreDiv.style.marginBottom = '8px';
+              scoreDiv.textContent = `Branch Score: ${this.latestScores.branch ?? '—'} • Risk Score: ${this.latestScores.risk ?? '—'}/10`;
+              content.appendChild(scoreDiv);
+            }
+            
+            addKV(content, 'Recommendation', a.recommendation, a.recommendation === 'SPECULATIVE_BUY' || a.recommendation === 'BUY' ? '#4ade80' : a.recommendation === 'HOLD' ? '#fbbf24' : '#f87171');
+            addKV(content, 'Confidence', a.confidence ? `${(a.confidence * 100).toFixed(0)}%` : 'N/A');
+            
+            // Tags
+            if (a.tags && a.tags.length) {
+              const tagsDiv = document.createElement('div');
+              tagsDiv.style.marginTop = '8px';
+              const tagsLabel = document.createElement('span');
+              tagsLabel.textContent = 'Tags: ';
+              tagsLabel.style.color = '#9fb2c8';
+              tagsLabel.style.fontSize = '12px';
+              tagsDiv.appendChild(tagsLabel);
+              
+              a.tags.forEach((tag, i) => {
+                const tagEl = document.createElement('span');
+                tagEl.textContent = tag;
+                tagEl.style.backgroundColor = '#2a2e37';
+                tagEl.style.color = '#6b8fb2';
+                tagEl.style.padding = '2px 6px';
+                tagEl.style.borderRadius = '3px';
+                tagEl.style.fontSize = '11px';
+                tagEl.style.marginLeft = '4px';
+                tagsDiv.appendChild(tagEl);
+              });
+              content.appendChild(tagsDiv);
+            }
+          }));
+          
+          // 10. Data Sources & Metadata
+          box.appendChild(createSection('Data Sources & Metadata', (content) => {
+            if (a.data_sources && a.data_sources.length) {
+              const sourcesHeader = document.createElement('div');
+              sourcesHeader.textContent = 'Data Sources:';
+              sourcesHeader.style.color = '#9fb2c8';
+              sourcesHeader.style.fontSize = '12px';
+              sourcesHeader.style.marginBottom = '4px';
+              content.appendChild(sourcesHeader);
+              addList(content, a.data_sources);
+            }
+            
+            addKV(content, 'Analysis Complete', a.analysis_complete ? 'Yes' : 'No', a.analysis_complete ? '#4ade80' : '#f87171');
+            
+            if (filePath) {
+              const fileDiv = document.createElement('div');
+              fileDiv.style.marginTop = '8px';
+              fileDiv.style.padding = '4px';
+              fileDiv.style.backgroundColor = '#1a1e27';
+              fileDiv.style.borderRadius = '3px';
+              addKV(fileDiv, 'Saved JSON', filePath);
+              content.appendChild(fileDiv);
+            }
+          }));
+          
+          this.finalWrap.appendChild(box);
+          this.narr.scrollTop=this.narr.scrollHeight;
+        } catch{} }
+        ensureCurrentLine(){ if(!this.twCurrentLineEl){ this.twCurrentLineEl=document.createElement('div'); this.twCurrentLineEl.className='line '+(this.twCurrentLineClass||''); this.term.appendChild(this.twCurrentLineEl);} }
+        commitLine(){ if(this.twCurrentLineEl){ this.twCurrentLineEl=null; } }
+        enqueueType(text){ if(!text) return; this.twQueue.push(String(text)); if(!this.twriting) this.typeStep(); }
+        typeStep(){ if(this.twriting) return; if(this.twQueue.length===0) return; this.twriting=true; let chunk=this.twQueue.shift(); let i=0; const tick=()=>{ let n=2; while(n-- && i<chunk.length){ const ch=chunk[i++]; if(ch==='\n'){ this.ensureCurrentLine(); if(this.twBuf){ this.twCurrentLineEl.textContent+=this.twBuf; this.twBuf=''; } this.commitLine(); } else { this.twBuf+=ch; } } if(this.twBuf){ this.ensureCurrentLine(); this.twCurrentLineEl.textContent+=this.twBuf; this.twBuf=''; } this.term.scrollTop=this.term.scrollHeight; if(i>=chunk.length){ this.twriting=false; if(this.twQueue.length) this.typeStep(); return; } setTimeout(tick,12); }; setTimeout(tick,0); }
+        // Stop timer and mark done
+        finish(){
+          this.active=false; this.finishedAt=Date.now(); this.setPhase('Done');
+          try { if (this.timerIv) { clearInterval(this.timerIv); this.timerIv = null; } } catch {}
+        }
+        collapse(){ 
+          try{ 
+            this.el.remove(); 
+            if (this.tab) this.tab.remove();
+          } catch{} 
+        }
+
+        // Init interactive behaviors
+        copyAddr(){
+          try {
+            const txt = this.h_addr?.textContent || '';
+            if (!txt) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(txt).then(()=> showToast('Copied: '+txt)).catch(()=> showToast('Copied'));
+            } else {
+              const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch {} document.body.removeChild(ta); showToast('Copied: '+txt);
+            }
+          } catch {}
+        }
+      }
+
+      // Panel management
+      const panels = new Map(); // mint -> Panel
+      const suppressedMints = new Set(); // mints closed by user; suppress until new run
+      const FINISHED_LIMIT = 6; // keep last N finished panels
+      
+      // Remove panel
+      function removePanel(panel){ 
+        try { panel.collapse(); } catch{} 
+        for (const [k,v] of panels.entries()) { 
+          if (v===panel) { 
+            panels.delete(k); 
+            break; 
+          } 
+        }
+        // Switch to another panel if this was active
+        if (activePanel === panel && panels.size > 0) {
+          switchToPanel(panels.values().next().value);
+        } else if (panels.size === 0) {
+          tabsContainer.style.display = 'none';
+        }
+      }
+
+      // Prune finished panels
+      function pruneFinished(){
+        const finished = [];
+        for (const [k,p] of panels.entries()) { if (!p.active && p.finishedAt) finished.push([k,p]); }
+        finished.sort((a,b)=> (a[1].finishedAt||0) - (b[1].finishedAt||0));
+        while (finished.length > FINISHED_LIMIT) {
+          const [k,p] = finished.shift();
+          try { p.collapse(); } catch {}
+          panels.delete(k);
+        }
+      }
+
+      // Get panel or create new one
+      function getPanel(mint){
+        if (!mint) return null;
+        if (panels.has(mint)) return panels.get(mint);
+        // Create or reuse a finished panel
+        // Only count active panels toward the capacity limit
+        let activeCount = 0; for (const p of panels.values()) { if (p.active) activeCount++; }
+        if (activeCount >= 3) {
+          let reuseKey = null; let oldest = Infinity;
+          for (const [k, p] of panels.entries()) {
+            if (!p.active && p.finishedAt && p.finishedAt < oldest) { oldest = p.finishedAt; reuseKey = k; }
+          }
+          if (reuseKey) {
+            const p = panels.get(reuseKey);
+            panels.delete(reuseKey);
+            p.reset(mint);
+            panels.set(mint, p);
+            return p;
+          }
+          nowTag.textContent = 'At capacity (3). Finish or close a panel to add more.';
+          return null;
+        }
+        const p = new Panel(mint);
+        try { p.h_addr && p.h_addr.addEventListener('click', ()=> p.copyAddr()); } catch {}
+        panels.set(mint, p);
+        pruneFinished();
+        // Auto-switch to new panel
+        switchToPanel(p);
+        return p;
+      }
+
+      // Pre-fill input from presets or URL (?mint=...) and init preset
+      (function initPreset(){
+        // Do NOT prefill by default so datalist shows all presets
+        try {
+          const u = new URL(window.location.href);
+          const m = (u.searchParams.get('mint')||'').trim();
+          mintInput.value = m || '';
+        } catch { mintInput.value = ''; }
+      })();
+
+      // Sticky bar summary state and connection state
+      let connState = 'bad'; // 'ok' | 'warn' | 'bad'
+      let lastEventText = '';
+      let lastEventAt = 0;
+      let lastEvIv = null;
+      let lastEvTrimTo = null;
+      let connPulseClass = '';
+
+      // Render now
+      function renderNow(){
+        try {
+          const cls = connState === 'ok' ? 'ok' : (connState === 'warn' ? 'warn' : 'bad');
+          // Connection chip removed from sticky bar; shown in header (#connbar)
+          let last = '';
+          if (lastEventText) {
+            const ms = Math.max(0, Date.now() - (lastEventAt||Date.now()));
+            const secs = Math.floor(ms/1000), mins=Math.floor(secs/60), hrs=Math.floor(mins/60);
+            const ago = hrs>0 ? `${hrs}h` : (mins>0 ? `${mins}m` : `${secs}s`);
+            last = `<span class="last"><span class="txt">${lastEventText}</span><span class="ago">${ago}</span></span>`;
+          }
+          nowTag.innerHTML = `${last}`;
+        } catch {}
+      }
+      
+      // Set now
+      function setNow(t){
+        try {
+          const txt = String(t||'');
+          const low = txt.toLowerCase();
+          if (low.includes('connected')) { 
+            connState = 'ok'; 
+            connPulseClass = 'pulse-ok';
+          }
+          else if (low.includes('reconnect')) { connState = 'warn'; connPulseClass = 'pulse-warn'; }
+          else if (low.includes('disconnect')) { connState = 'bad'; connPulseClass = 'pulse-bad'; }
+          else {
+            lastEventText = txt; lastEventAt = Date.now();
+            try { clearInterval(lastEvIv); lastEvIv = setInterval(renderNow, 1000); } catch {}
+            try { clearTimeout(lastEvTrimTo); lastEvTrimTo = setTimeout(()=>{ try { const el = nowTag.querySelector('.last'); if (el) { el.classList.add('fadeout'); setTimeout(()=>{ lastEventText=''; renderNow(); }, 250); } else { lastEventText=''; renderNow(); } } catch { lastEventText=''; renderNow(); } }, 12000); } catch {}
+            setTimeout(()=>{ try { const el = nowTag.querySelector('.last'); el && el.classList.add('flash'); setTimeout(()=> el && el.classList.remove('flash'), 300); } catch {} }, 0);
+          }
+          renderNow();
+          // Update header connection badge text + classes
+          try {
+            const cb = document.getElementById('connbar');
+            if (cb) {
+              cb.textContent = (connState==='ok'?'Connected':(connState==='warn'?'Reconnecting':'Disconnected'));
+              cb.classList.remove('ok','warn','bad');
+              cb.classList.add(connState==='ok'?'ok':(connState==='warn'?'warn':'bad'));
+              if (connPulseClass && connPulseClass.length > 0) { cb.classList.add(connPulseClass); setTimeout(()=> { if (cb && connPulseClass) cb.classList.remove(connPulseClass); }, 500); }
+            }
+          } catch {}
+          connPulseClass = '';
+        } catch { try { nowTag.textContent = t; } catch {} }
+      }
+
+      // WebSocket URL
+      function wsUrl(){
+        try {
+          const url = new URL(window.location.href);
+          const override = url.searchParams.get('ws');
+          if (override) return override;
+          // Same-origin WS by default (supports nginx proxy + TLS)
+          const scheme = (url.protocol === 'https:') ? 'wss:' : 'ws:';
+          return `${scheme}//${url.host}/ws`;
+        } catch {
+          const scheme = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+          return `${scheme}//${location.host}/ws`;
+        }
+      }
+
+      // Production WebSocket URL
+      function productionWsUrl() {
+        if (window.location.hostname === 'dexter.cash') {
+          return 'wss://dexter.cash/ws';
+        }
+        return wsUrl();
+      }
+
+      // WebSocket connection
+      let ws = null;
+      let wsPingTimer = null;
+      let wsReconnectAttempts = 0;
+      const WS_PING_MS = 25000;
+      const WS_MAX_BACKOFF_MS = 30000;
+
+      // Clear WebSocket timers
+      function clearWsTimers(){ try { if (wsPingTimer) { clearInterval(wsPingTimer); wsPingTimer = null; } } catch {} }
+
+      // Schedule reconnect
+      function scheduleReconnect(){
+        const delay = Math.min(1000 * Math.pow(2, wsReconnectAttempts), WS_MAX_BACKOFF_MS);
+        wsReconnectAttempts++;
+        setTimeout(connectWS, delay);
+      }
+
+      // Connect WebSocket handled by /js/live/ws.js. We only listen for bridged events.
+      window.addEventListener('ai:ws:open', () => {
+        try { setNow('Connected. Waiting for sessions…'); } catch {}
+      });
+      window.addEventListener('ai:ws:close', () => {
+        try { setNow('Disconnected — reconnecting…'); } catch {}
+      });
+      window.addEventListener('ai:terminal', (e) => {
+        try {
+          const msg = e?.detail?.msg;
+          if (msg?.type !== 'DATA' || msg?.topic !== 'terminal') return;
+          const { event, data } = msg;
+          if (msg.subtype === 'runner') {
+            if (event === 'runner:started') {
+              activeRuns.set(String(data.pid), { mint: data.mint, started_at: data.started_at });
+              try { const rp = getPanel(data.mint); if (rp) rp.pid = data.pid; } catch {}
+              renderRuns();
+            }
+            if (event === 'runner:ended') { activeRuns.delete(String(data.pid)); renderRuns(); }
+            if (event === 'runner:log') {
+              // Display child process logs in the appropriate panel and try to route [trace] lines to step details
+              const logMint = data?.mint;
+              if (logMint && !suppressedMints.has(logMint)) {
+                const logPanel = getPanel(logMint);
+                if (logPanel) {
+                  const stream = data?.stream || 'stdout';
+                  const line = data?.line || '';
+                  // Step trace routing
+                  try {
+                    const m = line.match(/^\[trace\]\s+(\{.*\})$/);
+                    if (m) {
+                      const j = JSON.parse(m[1]);
+                      const step = String(j?.step||'');
+                      const status = String(j?.status||'');
+                      if (step) {
+                        if (status==='start') { logPanel.addStepLog?.(step, `▶ start ${step}${j.url?` url=${j.url}`:''}`); }
+                        else if (status==='end') { const ms=(typeof j.ms==='number')?j.ms:null; const ok = !!j.ok; logPanel.addStepLog?.(step, `✓ end ${step}${ms!=null?` (${ms}ms)`:''} ok=${ok}`); }
+                        else if (status==='skip') { logPanel.addStepLog?.(step, `⏭ skipped ${step}${j.reason?` (${j.reason})`:''}`); }
+                      }
+                    }
+                  } catch {}
+                  const cls = stream === 'stderr' ? 't-red' : '';
+                  logPanel.log(`[${stream}] ${line}`, cls);
+                }
+              }
+            }
+            return;
+          }
+          if (msg.subtype !== 'ai_session') return;
+          const pmint = data?.mint || null;
+          if (pmint && !panels.has(pmint) && suppressedMints.has(pmint)) { return; }
+          const panel = getPanel(pmint);
+          if (!panel) return;
+          if (event === 'agent:memory') { panel.setContext(data?.text || ''); return; }
+          if (event === 'token:meta') { panel.updateTokenMeta({ name: data?.name, symbol: data?.symbol, address: data?.address || pmint }); return; }
+          if (event === 'agent:session_start') {
+            panel.setStart(data.started_at);
+            if (panel.initSteps) { panel.initSteps(); panel.setStepState('bootstrap','active'); panel.setPhase('Init'); }
+            setNow('Session started for ' + pmint);
+            panel.log('▶ session_start ' + pmint + ' model=' + (data.model||''), 't-grey');
+          } else if (event === 'agent:status') {
+            const t = data.text || '';
+            if (t.includes('llm_round1')) { panel.setPhase('Socials'); if(panel.setStepState){ panel.setStepState('bootstrap','done'); panel.setStepState('socials','active'); } }
+            if (t.includes('finalize_round_start')) { panel.setPhase('Synthesis'); if(panel.setStepState){ panel.setStepState('synthesis','active'); } }
+            if (t.includes('finalize_stream_completed')) { panel.setPhase('Finalizing'); if(panel.setStepState){ panel.setStepState('synthesis','done'); panel.setStepState('finalize','active'); } }
+            panel.log('… ' + t, 't-grey');
+          } else if (event === 'agent:tool_call') {
+            panel.log('↪ tool_call ' + (data.name||'') , 't-yellow');
+            if ((data.name==='analyze_token_ohlcv' || data.name==='analyze_token_ohlcv_range') && panel.setStepState) panel.setStepState('market','active');
+          } else if (event === 'agent:tool_result') {
+            panel.log('✔ tool_result ' + (data.name||'') + ' ' + (data.elapsed_ms||0) + 'ms', 't-green');
+            if (data.name==='socials_orchestrate' && panel.setStepState) panel.setStepState('socials','done', data.elapsed_ms||0);
+            if ((data.name==='analyze_token_ohlcv' || data.name==='analyze_token_ohlcv_range') && panel.setStepState) panel.setStepState('market','done', data.elapsed_ms||0);
+          } else if (event === 'agent:partial_output') {
+            const t = (data && data.text) ? String(data.text) : '';
+            if (t) panel.appendNarrative(t);
+          } else if (event === 'agent:error') {
+            const t = (data && data.text) ? String(data.text) : 'error';
+            panel.log(t, 't-red');
+          } else if (event === 'agent:final_json') {
+            try {
+              const a = data.data || {};
+              if (a?.metadata?.market) panel.updateMarket(a.metadata.market);
+              panel.updateScores(a);
+              try { panel.renderTimeline(a); } catch {} // Render the new timeline visualization
+              try { panel.renderFinalReport(a, data?.file || null); } catch {}
+              // Hide file path unless debug=1
+              try { const u=new URL(window.location.href); const dbg = u.searchParams.get('debug')==='1'; if (dbg && data?.file) panel.log('■ final_json saved '+data.file, ''); } catch {}
+            } catch {}
+          } else if (event && event.startsWith('process:')) {
+            const e = event.split(':')[1];
+            if (e==='step_start') {
+              const s=data?.step; if (s && panel.setStepState) { panel.setStepState(s,'active'); panel.addStepLog?.(s, `▶ start ${s}`); }
+            }
+            else if (e==='step_end') {
+              const s=data?.step; if (!s || !panel.setStepState) break;
+              if (data && data.skipped) { panel.setStepState(s,'skipped', 0); panel.addStepLog?.(s, `⏭ skipped ${s}`); }
+              else { panel.setStepState(s,'done', data.elapsed_ms||0, { ok: (data.ok!==false) }); panel.addStepLog?.(s, `✓ end ${s}${data.elapsed_ms!=null?` (${data.elapsed_ms}ms)`:''}${data.ok===false?' failed':''}`); }
+            }
+            else if (e==='status') { if (data?.text) panel.appendSignal?.(data.text,'status'); }
+            else if (e==='rationale') { if (data?.text) panel.appendSignal?.(data.text, data.kind||'why'); }
+            else if (e==='signal') { if (data?.label) panel.appendSignal?.(`${data.label}: ${data.value}`, 'signal'); }
+            else if (e==='source') { if (data?.url) panel.appendSourceLink?.(String(data.url), data.title||'', data.domain||''); }
+          } else if (event && event.startsWith('metrics:')) {
+            if (data){ panel.updateMarket?.({ fdv:data.fdv, liquidity:data.liquidity, volume24h:data.volume24h }); }
+          } else if (event === 'agent:session_end') {
+            panel.setPhase('Idle');
+            setNow('Session ended for ' + (pmint||''));
+            panel.log('■ session_end ok=' + (data.ok?'true':'false'), data.ok?'t-green':'t-red');
+            panel.finish();
+            pruneFinished();
+          }
+        } catch(e){}
+      });
+
+      // WebSocket connects via /js/live/ws.js (auto on load)
+      
+      // Initialize runs bar and optionally recap last analysis if idle
+      (async ()=>{
+        try {
+          const url = new URL(window.location.href); url.pathname = '/runs';
+          const res = await fetch(url.toString()); const j = await res.json();
+          if (j?.ok && Array.isArray(j.active)) {
+            for (const r of j.active) { activeRuns.set(String(r.pid), { mint: r.mint, started_at: r.startedAt }); }
+            try { if (typeof j.limit === 'number') RUN_LIMIT_HINT = j.limit; } catch {}
+            renderRuns();
+          }
+        } catch {}
+      })();
+
+      // Show toast
+      function showToast(msg){ try { const t=document.getElementById('toast'); t.textContent=String(msg||''); t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1800); } catch {} }
+
+      // Start run
+      async function startRun(mint){
+        if (!mint) return;
+        try {
+          const url = new URL(window.location.href);
+          url.pathname = '/run';
+          const res = await fetch(url.toString(), { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify({ mint }) });
+          if (!res.ok) {
+            const j = await res.json().catch(()=>({}));
+            setNow('Run failed: ' + (j.error||res.status));
+            showToast('Run failed');
+          } else {
+            setNow('Run started: ' + mint);
+            showToast('Run started');
+          }
+          // Always clear input after attempting to start, so datalist shows all presets again
+          try { mintInput.value = ''; } catch {}
+        } catch(e) {
+          setNow('Run error');
+          showToast('Run error');
+          try { mintInput.value = ''; } catch {}
+        }
+      }
+
+      // Run button and form event listeners
+      runBtn.addEventListener('click', ()=>{ const m = mintInput.value.trim(); startRun(m); });
+      runForm.addEventListener('submit', (e)=>{ e.preventDefault(); const m = mintInput.value.trim(); startRun(m); });
+
+      // Report Loader Modal logic (replaces prompt-based flow)
+      (function(){
+        const modal = document.getElementById('reportModal');
+        const btn = document.getElementById('debugLoadBtn');
+        const closeBtn = document.getElementById('reportClose');
+        const resultsEl = document.getElementById('reportResults');
+        const searchEl = document.getElementById('reportSearch');
+        const statusEl = document.getElementById('reportStatus');
+        const pageSizeEl = document.getElementById('reportPageSize');
+        const prevEl = document.getElementById('reportPrev');
+        const nextEl = document.getElementById('reportNext');
+        const previewEl = document.getElementById('reportPreview');
+        const skipSparkEl = document.getElementById('reportSkipSpark');
+
+        let rawItems = [];
+        let filtered = [];
+        let page = 0;
+
+        function openModal(){ try { modal.style.display='flex'; } catch {} }
+        function closeModal(){ try { modal.style.display='none'; } catch {} }
+        function fmtTime(ms){ try { return new Date(ms).toLocaleString(); } catch { return String(ms||''); } }
+        function fmtScore(n){ return (n==null) ? '?' : String(n); }
+
+        function applyFilter(){
+          const q = String(searchEl.value||'').trim().toLowerCase();
+          if (!q) { filtered = rawItems.slice(); page = 0; return; }
+          filtered = rawItems.filter(it => {
+            const hay = `${it.file||''} ${it.mint||''}`.toLowerCase();
+            return hay.includes(q);
+          });
+          page = 0;
+        }
+
+        function render(){
+          const size = Math.max(1, Math.min(100, parseInt(pageSizeEl.value||'20',10)||20));
+          const total = filtered.length;
+          const pages = Math.max(1, Math.ceil(total/size));
+          if (page >= pages) page = pages-1;
+          const start = page*size;
+          const slice = filtered.slice(start, start+size);
+          resultsEl.innerHTML = '';
+          for (const it of slice){
+            const row = document.createElement('div');
+            row.style.display='grid';
+            row.style.gridTemplateColumns='minmax(220px,1.2fr) 1fr 80px 110px 80px';
+            row.style.gap='8px';
+            row.style.alignItems='center';
+            row.style.padding='8px 10px';
+            row.style.borderBottom='1px solid #14202b';
+            row.style.cursor='pointer';
+            row.addEventListener('mouseenter',()=> row.style.background='#0c1117');
+            row.addEventListener('mouseleave',()=> row.style.background='transparent');
+
+            const file = document.createElement('div'); file.textContent = it.file || '-'; file.style.fontFamily='ui-monospace, monospace'; file.style.fontSize='12px';
+            const mint = document.createElement('div'); mint.textContent = it.mint ? (it.mint.slice(0,6)+'…'+it.mint.slice(-6)) : ''; mint.style.color='#90a6bd'; mint.style.fontSize='12px';
+            const bscore = document.createElement('div'); bscore.textContent = fmtScore(it.branchScore); bscore.style.textAlign='right'; bscore.style.color='#b8c6d6';
+            const when = document.createElement('div'); when.textContent = fmtTime(it.mtime); when.style.color='#9fb2c8'; when.style.fontSize='12px';
+
+            const actions = document.createElement('div'); actions.style.display='flex'; actions.style.gap='6px'; actions.style.justifyContent='flex-end';
+            const view = document.createElement('a'); view.textContent='View'; view.href = '/report-view.html?file='+encodeURIComponent(it.file||''); view.target='_blank'; view.className='link'; view.style.fontSize='12px';
+            const load = document.createElement('button'); load.textContent='Load'; load.style.fontSize='12px'; load.style.padding='3px 6px'; load.style.background='#0f1612'; load.style.color='#79e08f'; load.style.border='1px solid #2a4a36'; load.style.borderRadius='4px'; load.style.cursor='pointer';
+
+            load.addEventListener('click', async (ev)=>{ ev.stopPropagation(); await doLoad(it, { skipSpark: !!skipSparkEl.checked }); });
+            row.addEventListener('click', async ()=>{ await showPreview(it); });
+
+            actions.appendChild(view); actions.appendChild(load);
+            row.appendChild(file); row.appendChild(mint); row.appendChild(bscore); row.appendChild(when); row.appendChild(actions);
+            resultsEl.appendChild(row);
+          }
+          statusEl.textContent = `${total} results • page ${page+1} / ${Math.max(1, Math.ceil(total/Math.max(1, Math.min(100, parseInt(pageSizeEl.value||'20',10)||20))))}`;
+        }
+
+        async function fetchList(){
+          resultsEl.innerHTML=''; previewEl.textContent=''; statusEl.textContent='Loading…';
+          try {
+            const u = new URL(window.location.href); u.pathname = '/recent-analyses'; u.searchParams.set('limit','100');
+            const r = await fetch(u.toString());
+            if (!r.ok) throw new Error('failed '+r.status);
+            const j = await r.json();
+            rawItems = Array.isArray(j?.items) ? j.items : [];
+            applyFilter(); render();
+          } catch(e){ statusEl.textContent = 'Failed to load: '+(e?.message||e); }
+        }
+
+        async function showPreview(it){
+          previewEl.textContent = 'Loading preview…';
+          try {
+            const u = new URL(window.location.href); u.pathname = '/report/'+encodeURIComponent(it.file||'');
+            const r = await fetch(u.toString()); if (!r.ok) throw new Error('failed '+r.status);
+            const j = await r.json();
+            // Trim big arrays for preview to keep UI responsive
+            const shallow = { ...j };
+            try { if (Array.isArray(shallow?.twitter?.recentTweets)) shallow.twitter = { ...shallow.twitter, recentTweets: shallow.twitter.recentTweets.slice(0, 5) }; } catch {}
+            try { if (Array.isArray(shallow?.activityPriceTimeline)) shallow.activityPriceTimeline = shallow.activityPriceTimeline.slice(0, 20); } catch {}
+            previewEl.textContent = JSON.stringify({ file: it.file, mint: it.mint, branchScore: it.branchScore, when: it.mtime, sample: shallow }, null, 2);
+          } catch(e){ previewEl.textContent = 'Failed to load preview: '+(e?.message||e); }
+        }
+
+        async function fetchReportJSON(file){
+          // Try primary JSON endpoint
+          try {
+            const u = new URL(window.location.href); u.pathname = '/report/'+encodeURIComponent(file||'');
+            const r = await fetch(u.toString(), { headers: { 'accept':'application/json' } });
+            if (r.ok) return await r.json();
+          } catch {}
+          // Secondary: query-param endpoint (more robust through some routers)
+          try {
+            const uq = new URL(window.location.href); uq.pathname = '/report-json'; uq.search=''; uq.searchParams.set('file', file||'');
+            const rq = await fetch(uq.toString(), { headers: { 'accept':'application/json' } });
+            if (rq.ok) return await rq.json();
+          } catch {}
+          throw new Error('report_fetch_failed');
+        }
+        async function doLoad(selectedReport, opts){
+          try {
+            const analysis = await fetchReportJSON(selectedReport.file||'');
+            const mint = analysis?.metadata?.token_address || analysis?.token_address || selectedReport.mint;
+            if (!mint) { showToast('No token address in report'); return; }
+
+            let panel = getPanel(mint);
+            if (!panel) { panel = new Panel(mint); panels.set(mint, panel); renderRuns(); }
+            panel.reset(mint);
+            panel.setPhase('Debug Report Loaded');
+
+            if (analysis?.metadata?.market?.top_pool?.baseToken) {
+              panel.updateTokenMeta({
+                symbol: analysis.metadata.market.top_pool.baseToken.symbol,
+                name: analysis.metadata.market.top_pool.baseToken.name
+              });
+            }
+            if (analysis?.metadata?.market) { panel.updateMarket(analysis.metadata.market); }
+            panel.updateScores(analysis);
+
+            if (!opts?.skipSpark) {
+              try {
+                // If report has an mtime, anchor sparkline to that end time
+                const reportEndMs = (selectedReport.mtime || analysis?.metadata?.generated_at || analysis?.generated_at || null);
+                if (reportEndMs) {
+                  const url = new URL(window.location.href);
+                  url.pathname = '/ohlcv'; url.search='';
+                  url.searchParams.set('mint', mint);
+                  const hours = Math.max(1, Math.min(336, parseInt(String(opts?.hours||'6'),10)||6));
+                  url.searchParams.set('hours', String(hours));
+                  url.searchParams.set('end', String(Math.floor(Number(reportEndMs)/1000)));
+                  const rr = await fetch(url.toString());
+                  if (rr.ok) {
+                    const j = await rr.json();
+                    if (j?.ok && Array.isArray(j.series)) {
+                      panel.timelineData = panel.timelineData || {};
+                      panel.timelineData.ohlcv = j.series.map(p => ({ time:p.unixTime*1000, open:Number(p.o), high:Number(p.h), low:Number(p.l), close:Number(p.c), volume:Number(p.v)||0 }));
+                      try { panel.renderTimeline(analysis); } catch {}
+                      try { const prices = j.series.map(p=>Number(p.c)).filter(x=>Number.isFinite(x)); panel.drawSparkline(prices); } catch {}
+                    }
+                  }
+                } else {
+                  panel.loadSpark();
+                }
+              } catch {}
+            }
+            try { panel.renderTimeline(analysis); } catch {}
+            try { panel.renderFinalReport(analysis, selectedReport.file); } catch {}
+
+            panel.log('📁 Debug report loaded: ' + selectedReport.file, 't-green');
+            if (opts?.skipSpark) panel.log('⏭️ Sparkline skipped by option', 't-yellow');
+            mintInput.value = mint;
+            closeModal();
+          } catch(e){ showToast('Failed to load: '+(e?.message||e)); }
+        }
+
+        btn.addEventListener('click', async ()=>{ openModal(); await fetchList(); });
+        closeBtn.addEventListener('click', ()=> closeModal());
+        modal.addEventListener('click', (e)=>{ if (e.target === modal) closeModal(); });
+        searchEl.addEventListener('input', ()=>{ applyFilter(); render(); });
+        pageSizeEl.addEventListener('change', ()=>{ page = 0; render(); });
+        prevEl.addEventListener('click', ()=>{ if (page>0){ page--; render(); } });
+        nextEl.addEventListener('click', ()=>{ const size=Math.max(1, Math.min(100, parseInt(pageSizeEl.value||'20',10)||20)); if ((page+1)*size < filtered.length){ page++; render(); } });
+
+        // Expose helper to load most recent report for a given mint
+        window.loadReportByMint = async function(mint, opts){
+          try {
+            const target = String(mint||'').trim().toLowerCase();
+            // Robust path: recent-analyses list, pick newest matching mint or filename
+            const u = new URL(window.location.href); u.pathname = '/recent-analyses'; u.search=''; u.searchParams.set('limit','100');
+            const r = await fetch(u.toString()); const j = await r.json();
+            const items = Array.isArray(j?.items) ? j.items : [];
+            // Prefer explicit mint match; else filename contains the mint
+            let match = items.find(it => String(it.mint||'').trim().toLowerCase() === target);
+            if (!match) match = items.find(it => String(it.file||'').toLowerCase().includes(target));
+            if (!match) { showToast('No report found for mint'); return false; }
+            await doLoad(match, opts||{});
+            return true;
+          } catch(e){ showToast('Autoload failed: '+(e?.message||e)); return false; }
+        }
+      })();
+
+      // Dynamically enrich datalist with recent analyses so suggestions appear when typing
+      (async ()=>{
+        try {
+          const url = new URL(window.location.href); url.pathname = '/recent-analyses'; url.searchParams.set('limit','25');
+          const res = await fetch(url.toString()); const j = await res.json();
+          if (j?.ok && Array.isArray(j.items)) {
+            const dl = document.getElementById('mintPresets');
+            const existing = new Set(Array.from(dl.querySelectorAll('option')).map(o => o.value));
+            for (const it of j.items) {
+              const mint = (it?.mint || '').trim();
+              if (!mint || existing.has(mint)) continue;
+              const opt = document.createElement('option');
+              opt.value = mint; opt.label = (mint.slice(0,8)+'…');
+              dl.appendChild(opt);
+              existing.add(mint);
+            }
+            // Suggestions are rebuilt on focus/click; do not auto-open on load
+          }
+        } catch {}
+      })();
+
+      // URL autoload: ?mint=<address>&skipSpark=1&hours=6
+      (async ()=>{
+        try {
+          const u = new URL(window.location.href);
+          const mint = (u.searchParams.get('mint')||'').trim();
+          if (mint) {
+            const skipSpark = u.searchParams.get('skipSpark') === '1';
+            const hoursParam = u.searchParams.get('hours');
+            const hours = hoursParam ? Math.max(1, Math.min(336, parseInt(hoursParam,10)||6)) : 6;
+            // Wait a tick for UI/handlers to be ready
+            setTimeout(()=>{ try { window.loadReportByMint?.(mint, { skipSpark, hours }); } catch {} }, 200);
+          }
+        } catch {}
+      })();
+
+      // Click-to-open suggestion dropdown (clean, single input)
+      const mintSuggest = document.getElementById('mintSuggest');
+      
+      // Portal the suggestions panel to <body> so it isn't clipped/shifted by parents
+      try { if (mintSuggest && mintSuggest.parentElement !== document.body) { document.body.appendChild(mintSuggest); } } catch {}
+
+      // Position suggestions
+      function positionSuggest(){
+        try {
+          if (!mintSuggest || mintSuggest.style.display==='none') return;
+          const r = mintInput.getBoundingClientRect();
+          const top = Math.round(r.bottom + 4);
+          const left = Math.round(r.left);
+          const width = Math.round(r.width);
+          // Use fixed overlay to avoid being clipped/covered by sticky bars
+          mintSuggest.style.position = 'fixed';
+          mintSuggest.style.top = top + 'px';
+          mintSuggest.style.left = left + 'px';
+          mintSuggest.style.width = width + 'px';
+          mintSuggest.style.maxWidth = '100vw';
+          // Clamp height to viewport to prevent off-screen overflow
+          const vh = window.innerHeight || document.documentElement.clientHeight || 600;
+          const maxH = Math.max(100, Math.min(280, vh - top - 8));
+          mintSuggest.style.maxHeight = maxH + 'px';
+        } catch {}
+      }
+
+      // Cache + helpers to enrich suggestion items with symbol/name
+      const mintMetaCache = new Map(); // mint -> { symbol, name }
+
+      // Format USD compact
+      function fmtUSDCompact(n){
+        try {
+          if (n == null || isNaN(n)) return '';
+          const v = Number(n);
+          const abs = Math.abs(v);
+          const f = (x)=> (x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2));
+          if (abs >= 1_000_000_000) return `$${f(abs/1_000_000_000)}B`;
+          if (abs >= 1_000_000) return `$${f(abs/1_000_000)}M`;
+          if (abs >= 1_000) return `$${f(abs/1_000)}K`;
+          return `$${f(abs)}`;
+        } catch { return ''; }
+      }
+
+      // Fetch mint meta
+      async function fetchMintMeta(mint){
+        try {
+          if (!mint || mintMetaCache.has(mint)) return mintMetaCache.get(mint);
+          const r = await fetch(`https://api.dexscreener.com/token-pairs/v1/solana/${encodeURIComponent(mint)}`);
+          if (!r.ok) return null;
+          const j = await r.json();
+          const pairs = Array.isArray(j?.pairs) ? j.pairs.slice() : [];
+          pairs.sort((a,b)=> ((b?.liquidity?.usd||0) - (a?.liquidity?.usd||0)) );
+          const top = pairs[0] || null;
+          const base = top?.baseToken || top?.base || null;
+          const sym = (base?.symbol || '').toString();
+          const name = (base?.name || '').toString();
+          const liq = top?.liquidity?.usd != null ? Number(top.liquidity.usd) : null;
+          const vol = (top?.volume && (top.volume.h24 != null ? Number(top.volume.h24) : (top.volume24h != null ? Number(top.volume24h) : null))) || null;
+          const mc = (top?.marketCap != null ? Number(top.marketCap) : (top?.fdv != null ? Number(top.fdv) : null));
+          const out = { symbol: sym, name, liq, vol, mc };
+          mintMetaCache.set(mint, out);
+          return out;
+        } catch { return null; }
+      }
+
+      // Apply mint meta to item
+      function applyMintMetaToItem(el, mint){
+        try {
+          const meta = mintMetaCache.get(mint) || null;
+          const symEl = el.querySelector('.sym');
+          const nmEl = el.querySelector('.nm');
+          const mxEl = el.querySelector('.mx');
+          if (meta) {
+            if (symEl && meta.symbol) symEl.textContent = meta.symbol;
+            if (nmEl && meta.name) nmEl.textContent = meta.name;
+            if (mxEl) {
+              const parts = [];
+              if (meta.mc != null) parts.push(`${fmtUSDCompact(meta.mc)} MC`);
+              if (meta.vol != null) parts.push(`${fmtUSDCompact(meta.vol)} Vol`);
+              if (meta.liq != null) parts.push(`${fmtUSDCompact(meta.liq)} Liq`);
+              mxEl.textContent = parts.join(' · ');
+            }
+          }
+        } catch {}
+      }
+      
+      // Datalist options
+      function datalistOptions(){
+        const dl = document.getElementById('mintPresets');
+        return Array.from(dl.querySelectorAll('option')).map(o => ({ value: o.value || '', label: o.label || (o.value || '').slice(0,8)+'…' })).filter(x => x.value);
+      }
+
+      // Suggestion keyboard navigation state
+      let suggestIndex = -1; // Current active suggestion index
+      
+      // Get all suggestion items
+      function suggestItems(){ return Array.from(mintSuggest.querySelectorAll('.item')); }
+
+      // Check if suggestions are visible
+      function suggestionsVisible(){ return mintSuggest && mintSuggest.style.display !== 'none' && mintSuggest.innerHTML.trim() !== ''; }
+
+      // Set active suggestion
+      function setSuggestActive(idx){
+        const items = suggestItems();
+        items.forEach(el => el.classList.remove('active'));
+        if (!items.length) { suggestIndex = -1; return; }
+        if (idx < 0) idx = 0;
+        if (idx >= items.length) idx = items.length - 1;
+        suggestIndex = idx;
+        const el = items[idx];
+        if (el) { el.classList.add('active'); try { el.scrollIntoView({ block: 'nearest' }); } catch {} }
+      }
+
+      // Pick active suggestion
+      function pickSuggestActive(){
+        const items = suggestItems();
+        const el = (suggestIndex >=0 && suggestIndex < items.length) ? items[suggestIndex] : null;
+        const v = el ? (el.getAttribute('data-v')||'') : '';
+        if (v) { mintInput.value = v; hideSuggestionsSoon(); }
+      }
+
+      // Render mint suggestions
+      async function renderMintSuggestions(filter){
+        const opts = datalistOptions();
+        const q = String(filter||'').toLowerCase();
+        const list = q ? opts.filter(o => o.value.toLowerCase().includes(q) || (o.label||'').toLowerCase().includes(q)) : opts.slice();
+        if (!list.length) { mintSuggest.style.display='none'; mintSuggest.innerHTML=''; return; }
+        mintSuggest.innerHTML = list.map(o => {
+          const addrShort = `${o.value.slice(0,8)}…${o.value.slice(-4)}`;
+          const symInit = o.label || '—';
+          return `<div class="item" data-v="${o.value}" style="padding:4px 8px;cursor:pointer;border-bottom:1px solid #121521;font-size:12px;line-height:1.25">`
+            + `<div class="t1" style="display:flex;align-items:center;gap:6px"><span class="sym" style="font-weight:600">${symInit}</span> <span class="nm" style="color:#c8d1dc"></span><span class="mx" style="margin-left:auto;color:#98a6b3;font-size:10px"></span></div>`
+            + `<div class="t2" style="color:#98a6b3;font-size:11px">${addrShort}</div>`
+            + `</div>`;
+        }).join('');
+        Array.from(mintSuggest.querySelectorAll('.item')).forEach(el => el.addEventListener('mousedown', (e)=>{ // mousedown to beat blur
+          e.preventDefault(); const v = el.getAttribute('data-v')||''; mintInput.value = v; hideSuggestionsSoon();
+        }));
+        // Hover marks active for keyboard clarity
+        Array.from(mintSuggest.querySelectorAll('.item')).forEach((el, idx) => el.addEventListener('mouseover', ()=> setSuggestActive(idx)));
+        // Enrich with symbol/name asynchronously
+        Array.from(mintSuggest.querySelectorAll('.item')).forEach(async (el)=>{
+          const mint = el.getAttribute('data-v')||'';
+          if (!mint) return;
+          if (!mintMetaCache.has(mint)) await fetchMintMeta(mint);
+          applyMintMetaToItem(el, mint);
+        });
+        mintSuggest.style.display = 'block';
+        suggestIndex = -1;
+      }
+      
+      // Remote search augmentation (Using resolver with proper scoring)
+      async function augmentSuggestionsRemote(){
+        const q = String(mintInput.value||'').toLowerCase();
+        if (!q || q.length < 2) return;
+        try {
+          // Use the resolver endpoint with proper scoring
+          const r = await fetch('/realtime/tool-call', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: 'resolve_token',
+              args: { query: q, chain: 'solana', limit: 8 }
+            })
+          });
+          const result = await r.json().catch(()=>({ ok: false }));
+          
+          let remote = [];
+          if (result.ok && Array.isArray(result.results)) {
+            // Use resolver's ranked results with confidence scores
+            remote = result.results.map(token => ({
+              value: token.address,
+              label: token.symbol,
+              confidence: token.confidence,
+              quoteLiq: token.quote_liquidity_usd,
+              volume: token.volume_24h,
+              isScam: token.is_likely_scam
+            }));
+          } else {
+            // Fallback to DexScreener if resolver fails
+            const r2 = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`);
+            const jj = await r2.json().catch(()=>({}));
+            const pairs = Array.isArray(jj?.pairs) ? jj.pairs : [];
+            const m = new Map();
+            for (const p of pairs){
+              if ((p?.chainId||'').toLowerCase() !== 'solana') continue;
+              const base = p.baseToken || p.base || null;
+              if (!base?.address) continue;
+              const addr = String(base.address);
+              const liq = Number(p?.liquidity?.usd||0) || 0;
+              const rec = m.get(addr) || { value: addr, label: (base.symbol||'').toUpperCase(), liq: 0 };
+              rec.liq += liq; m.set(addr, rec);
+            }
+            remote = Array.from(m.values()).sort((a,b)=> b.liq - a.liq).slice(0, 8);
+          }
+          
+          // Merge with local datalist results
+          const opts = datalistOptions();
+          const local = q ? opts.filter(o => o.value.toLowerCase().includes(q) || (o.label||'').toLowerCase().includes(q)) : opts.slice();
+          const seen = new Set();
+          const combined = [];
+          for (const it of remote){ if (!seen.has(it.value)) { combined.push(it); seen.add(it.value); } }
+          for (const it of local){ if (!seen.has(it.value)) { combined.push(it); seen.add(it.value); } }
+          
+          // Re-render suggestions with confidence/liquidity indicators
+          mintSuggest.innerHTML = combined.slice(0,20).map(o => {
+            const addrShort = `${o.value.slice(0,8)}…${o.value.slice(-4)}`;
+            const symInit = o.label || '—';
+            // Show confidence or liquidity info
+            let extra = '';
+            if (o.confidence !== undefined) {
+              extra = `${o.confidence}%`;
+              if (o.quoteLiq) {
+                const liq = o.quoteLiq >= 1000 ? `$${(o.quoteLiq/1000).toFixed(0)}k` : `$${o.quoteLiq.toFixed(0)}`;
+                extra += ` • ${liq}`;
+              }
+            }
+            return `<div class=\"item\" data-v=\"${o.value}\" style=\"padding:4px 8px;cursor:pointer;border-bottom:1px solid #121521;font-size:12px;line-height:1.25\">`
+              + `<div class=\"t1\" style=\"display:flex;align-items:center;gap:6px\"><span class=\"sym\" style=\"font-weight:600\">${symInit}</span> <span class=\"nm\" style=\"color:#c8d1dc\"></span><span class=\"mx\" style=\"margin-left:auto;color:#98a6b3;font-size:10px\">${extra}</span></div>`
+              + `<div class=\"t2\" style=\"color:#98a6b3;font-size:11px\">${addrShort}</div>`
+              + `</div>`;
+          }).join('');
+          Array.from(mintSuggest.querySelectorAll('.item')).forEach(el => el.addEventListener('mousedown', (e)=>{ e.preventDefault(); const v = el.getAttribute('data-v')||''; mintInput.value = v; hideSuggestionsSoon(); }));
+          Array.from(mintSuggest.querySelectorAll('.item')).forEach((el, idx)=> el.addEventListener('mouseover', ()=> setSuggestActive(idx)));
+          Array.from(mintSuggest.querySelectorAll('.item')).forEach(async (el)=>{ const mint = el.getAttribute('data-v')||''; if (!mint) return; if (!mintMetaCache.has(mint)) await fetchMintMeta(mint); applyMintMetaToItem(el, mint); });
+          mintSuggest.style.display = 'block';
+          positionSuggest();
+          suggestIndex = -1;
+        } catch {}
+      }
+      
+      // Hide suggestions soon
+      function hideSuggestionsSoon(){ setTimeout(()=>{ mintSuggest.style.display='none'; }, 120); }
+
+      // Check if target is inside suggestions or input
+      function isInsideSuggestOrInput(target){ try { return (mintSuggest && mintSuggest.contains(target)) || (mintWrap && mintWrap.contains(target)); } catch { return false; } }
+
+      // Close on outside click/touch
+      try {
+        document.addEventListener('mousedown', (e)=>{ if (!isInsideSuggestOrInput(e.target)) { hideSuggestionsSoon(); } }, true);
+        document.addEventListener('touchstart', (e)=>{ if (!isInsideSuggestOrInput(e.target)) { hideSuggestionsSoon(); } }, { passive: true, capture: true });
+      // No gear UI; keep bootstrap details in modelbar title only.
+
+      // No gear UI; keep bootstrap details in modelbar title only.
+      } catch {}
+      
+      // Schedule suggestions and event listeners
+      let suggestTimer = null;
+      function scheduleSuggest(){ try { clearTimeout(suggestTimer); suggestTimer = setTimeout(async ()=>{ await renderMintSuggestions(mintInput.value); await augmentSuggestionsRemote(); }, 150); } catch {} }
+      mintInput.addEventListener('focus', ()=>{ renderMintSuggestions(mintInput.value); positionSuggest(); });
+      mintInput.addEventListener('click', ()=>{ renderMintSuggestions(mintInput.value); positionSuggest(); });
+      mintInput.addEventListener('input', scheduleSuggest);
+      mintInput.addEventListener('blur', hideSuggestionsSoon);
+      window.addEventListener('resize', positionSuggest);
+      window.addEventListener('scroll', positionSuggest, { passive: true });
+
+    })();
+  </script>
+
+    <script>
+      // Optional Supabase bootstrap: fetch config, init client, and hold session
+      window.SUPABASE = { client: null, session: null };
+      (async function initSupabase(){
+        try {
+          const r = await fetch('/auth/config', { cache:'no-cache' });
+          const j = await r.json().catch(()=>null);
+          if (!j?.ok || !j?.supabaseUrl || !j?.supabaseAnonKey) return;
+          const url = j.supabaseUrl; const key = j.supabaseAnonKey;
+          const el = document.createElement('script');
+          el.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+          el.async = true; el.onload = async ()=>{
+            try {
+              const sb = window.supabase.createClient(url, key, { auth: { persistSession:true, autoRefreshToken:true } });
+              window.SUPABASE.client = sb;
+              const { data } = await sb.auth.getSession();
+              window.SUPABASE.session = data?.session || null;
+              try { console.log('[supabase] session', !!window.SUPABASE.session); } catch {}
+            } catch {}
+          };
+          document.head.appendChild(el);
+        } catch {}
+      })();
+    </script>
+    <script type="module" src="/js/live/ws.js"></script>
+    <script type="module" src="/js/live/status.js"></script>
+    <script type="module" src="/js/live/traces.js"></script>
+</body>
+</html>

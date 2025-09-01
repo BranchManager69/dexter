@@ -1,0 +1,276 @@
+[
+  {
+    "analysisFile": "gpt5-analysis-3qq54YqAKG3TcrwNHXFSpMCWoL8gmMuPceJ4FG9npump-2025-08-28T14-20-36-184Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-28T14-14-49-488Z.json",
+    "mint": "3qq54YqAKG3TcrwNHXFSpMCWoL8gmMuPceJ4FG9npump",
+    "recoveredData": {
+      "symbol": "CLANKER",
+      "name": "CLANKER Robot AI Slur",
+      "price": 0.008153,
+      "vol1h": 26300.47,
+      "vol24h": 1201485.62,
+      "chain": "solana",
+      "dex": "raydium",
+      "baseTokenSymbol": "CLANKER",
+      "baseTokenName": "CLANKER Robot AI Slur"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-2ZqgkCpvXjzB4NstzBUPSrsYrrbziUv5mC9CsxSQZryG-2025-08-28T04-22-24-608Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-28T04-20-15-266Z.json",
+    "mint": "2ZqgkCpvXjzB4NstzBUPSrsYrrbziUv5mC9CsxSQZryG",
+    "recoveredData": {
+      "symbol": "BUTTPLUG",
+      "name": "fartcoin killer",
+      "price": 0.0002923,
+      "vol1h": 8141.37,
+      "vol24h": 1168745.73,
+      "chain": "solana",
+      "dex": "pumpswap",
+      "baseTokenSymbol": "BUTTPLUG",
+      "baseTokenName": "fartcoin killer"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos-2025-08-28T04-14-49-602Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-28T04-10-34-727Z.json",
+    "mint": "BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos",
+    "recoveredData": {
+      "symbol": "LLM",
+      "name": "Latina Language Model",
+      "price": 0.005752,
+      "vol1h": 250305.3,
+      "vol24h": 2529010.24,
+      "chain": "solana",
+      "dex": "meteora",
+      "baseTokenSymbol": "LLM",
+      "baseTokenName": "Latina Language Model"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-F4e7axJD-2025-08-26T01-20-33-204Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-26T01-17-19-912Z.json",
+    "mint": "F4e7axJDGLk5WpNGEL2ZpxTP9STdk7L9iSoJX7utHHHX",
+    "recoveredData": {
+      "symbol": "oldDUEL",
+      "name": "oldDegenDuel"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-DMwbVy48dWVKGe9z1pcVnwF3HLMLrqWdDLfbvx8RchhK-2025-08-27T20-57-00-619Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-27T20-54-53-068Z.json",
+    "mint": "DMwbVy48dWVKGe9z1pcVnwF3HLMLrqWdDLfbvx8RchhK",
+    "recoveredData": {
+      "symbol": "Cope",
+      "name": "Cope",
+      "price": 0.002048,
+      "vol1h": 4722665.35,
+      "vol24h": 6584268.7,
+      "chain": "solana",
+      "dex": "pumpswap",
+      "baseTokenSymbol": "Cope",
+      "baseTokenName": "Cope"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-F4e7axJD-2025-08-26T00-09-09-872Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-26T00-08-37-917Z.json",
+    "mint": "F4e7axJDGLk5WpNGEL2ZpxTP9STdk7L9iSoJX7utHHHX",
+    "recoveredData": {
+      "symbol": "DUEL",
+      "name": "DegenDuel"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-DMwbVy48dWVKGe9z1pcVnwF3HLMLrqWdDLfbvx8RchhK-2025-08-27T20-15-54-504Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-27T20-14-11-210Z.json",
+    "mint": "DMwbVy48dWVKGe9z1pcVnwF3HLMLrqWdDLfbvx8RchhK",
+    "recoveredData": {
+      "symbol": "Cope",
+      "name": "Cope",
+      "price": 0.002575,
+      "vol1h": 4577055.75,
+      "vol24h": 4766926.75,
+      "chain": "solana",
+      "dex": "pumpswap",
+      "baseTokenSymbol": "Cope",
+      "baseTokenName": "Cope"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos-2025-08-28T00-56-20-379Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-28T00-50-32-996Z.json",
+    "mint": "BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos",
+    "recoveredData": {
+      "symbol": "LLM",
+      "name": "Latina Language Model",
+      "price": 0.003846,
+      "vol1h": 54582.64,
+      "vol24h": 2669172.84,
+      "chain": "solana",
+      "dex": "meteora",
+      "baseTokenSymbol": "LLM",
+      "baseTokenName": "Latina Language Model"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos-2025-08-28T00-43-45-182Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-28T00-38-44-740Z.json",
+    "mint": "BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos",
+    "recoveredData": {
+      "symbol": "LLM",
+      "name": "Latina Language Model",
+      "price": 0.003768,
+      "vol1h": 89599.1,
+      "vol24h": 2675627.83,
+      "chain": "solana",
+      "dex": "meteora",
+      "baseTokenSymbol": "LLM",
+      "baseTokenName": "Latina Language Model"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos-2025-08-27T18-44-57-446Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-27T18-42-18-553Z.json",
+    "mint": "BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos",
+    "recoveredData": {
+      "symbol": "LLM",
+      "name": "Latina Language Model",
+      "price": 0.004403,
+      "vol1h": 63144.54,
+      "vol24h": 3406323.12,
+      "chain": "solana",
+      "dex": "meteora",
+      "baseTokenSymbol": "LLM",
+      "baseTokenName": "Latina Language Model"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos-2025-08-27T18-15-45-994Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-27T18-14-49-210Z.json",
+    "mint": "BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos",
+    "recoveredData": {
+      "symbol": "LLM",
+      "name": "Latina Language Model",
+      "price": 0.004772,
+      "vol1h": 77949.33,
+      "vol24h": 3475431.59,
+      "chain": "solana",
+      "dex": "meteora",
+      "baseTokenSymbol": "LLM",
+      "baseTokenName": "Latina Language Model"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos-2025-08-27T18-02-41-378Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-27T18-02-16-055Z.json",
+    "mint": "BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos",
+    "recoveredData": {
+      "symbol": "LLM",
+      "name": "Latina Language Model",
+      "price": 0.004728,
+      "vol1h": 86422.23,
+      "vol24h": 3476067.99,
+      "chain": "solana",
+      "dex": "meteora",
+      "baseTokenSymbol": "LLM",
+      "baseTokenName": "Latina Language Model"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos-2025-08-27T07-48-25-449Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-27T07-46-32-852Z.json",
+    "mint": "BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos",
+    "recoveredData": {
+      "symbol": "LLM",
+      "name": "Latina Language Model",
+      "price": 0.004321,
+      "vol1h": 105066.97,
+      "vol24h": 3538442.66,
+      "chain": "solana",
+      "dex": "meteora",
+      "baseTokenSymbol": "LLM",
+      "baseTokenName": "Latina Language Model"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos-2025-08-27T05-39-56-892Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-27T05-38-51-350Z.json",
+    "mint": "BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos",
+    "recoveredData": {
+      "symbol": "LLM",
+      "name": "Latina Language Model",
+      "price": 0.004889,
+      "vol1h": 76806.62,
+      "vol24h": 3442614.91,
+      "chain": "solana",
+      "dex": "meteora",
+      "baseTokenSymbol": "LLM",
+      "baseTokenName": "Latina Language Model"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos-2025-08-27T06-47-38-609Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-27T06-44-55-035Z.json",
+    "mint": "BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos",
+    "recoveredData": {
+      "symbol": "LLM",
+      "name": "Latina Language Model",
+      "price": 0.005238,
+      "vol1h": 84862.73,
+      "vol24h": 3478585.25,
+      "chain": "solana",
+      "dex": "meteora",
+      "baseTokenSymbol": "LLM",
+      "baseTokenName": "Latina Language Model"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos-2025-08-27T04-56-02-573Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-27T04-54-48-014Z.json",
+    "mint": "BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos",
+    "recoveredData": {
+      "symbol": "LLM",
+      "name": "Latina Language Model",
+      "price": 0.004919,
+      "vol1h": 155301.14,
+      "vol24h": 3463280.27,
+      "chain": "solana",
+      "dex": "meteora",
+      "baseTokenSymbol": "LLM",
+      "baseTokenName": "Latina Language Model"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos-2025-08-27T05-31-20-291Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-27T05-29-57-873Z.json",
+    "mint": "BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos",
+    "recoveredData": {
+      "symbol": "LLM",
+      "name": "Latina Language Model",
+      "price": 0.004772,
+      "vol1h": 135702.47,
+      "vol24h": 3443624.03,
+      "chain": "solana",
+      "dex": "meteora",
+      "baseTokenSymbol": "LLM",
+      "baseTokenName": "Latina Language Model"
+    }
+  },
+  {
+    "analysisFile": "gpt5-analysis-BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos-2025-08-26T22-42-45-873Z.json",
+    "orchestratorFile": "orchestrated-analysis-2025-08-26T22-37-20-214Z.json",
+    "mint": "BnszRWbs9LxSzsCUUS57HMTNNtyDHFsnmZ1mVhAYdaos",
+    "recoveredData": {
+      "symbol": "LLM",
+      "name": "Latina Language Model",
+      "price": 0.00409,
+      "vol1h": 410969.42,
+      "vol24h": 4083002.02,
+      "chain": "solana",
+      "dex": "meteora",
+      "baseTokenSymbol": "LLM",
+      "baseTokenName": "Latina Language Model"
+    }
+  }
+]

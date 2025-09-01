@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Token Analysis • Report</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:#0b0c10; color:#e6edf3; }
+    header { padding:12px 16px; background:#11131a; border-bottom:1px solid #222633; display:flex; gap:12px; align-items:center; }
+    .spacer { flex:1 1 auto; }
+    a { color:#8ab4ff; text-decoration:none; }
+    main { padding: 16px; display:flex; justify-content:center; }
+    .wrap { width: 100%; max-width: 960px; display:grid; gap:12px; }
+    .card { background:#0f1117; border:1px solid #1c2230; border-radius:8px; padding:12px; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .title { font-weight:600; margin-bottom:6px; }
+    .badge { padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid #2c3242; color:#9fb2c8; }
+    .badge.ok { color:#79e08f; border-color:#2a4a36; background:#0f1612; }
+    .badge.warn { color:#f2cc60; border-color:#4a3f2a; background:#15130f; }
+    .badge.bad { color:#ff7b7b; border-color:#5a2a30; background:#1a1112; }
+    .small { font-size:12px; color:#9fb2c8; }
+    .muted { color:#98a6b3; }
+    .pre { white-space: pre-wrap; word-break: break-word; line-height:1.45; font-size: 13px; }
+    .btn { font-size:12px; padding:4px 8px; border:1px solid #2c3242; border-radius:4px; color:#9fb2c8; background:#121521; cursor:pointer; }
+    .btn:hover { color:#e6edf3; border-color:#3a4155; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding:6px 8px; border-bottom:1px solid #1a1e27; font-size:13px; }
+    th { color:#9fb2c8; text-align:left; font-weight:600; }
+    .grid2 { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+    @media (max-width: 720px){ .grid2 { grid-template-columns: 1fr; } }
+  </style>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+</head>
+<body>
+  <header>
+    <a href="/agent-dashboard.html">← Back</a>
+    <div class="spacer"></div>
+    <button id="copyJson" class="btn">Copy JSON link</button>
+  </header>
+  <main>
+    <div class="wrap">
+      <section class="card">
+        <div class="title">Overview</div>
+        <div id="metaRow" class="row small">Loading…</div>
+      </section>
+      <section class="card">
+        <div class="title">Summary</div>
+        <div id="summary" class="pre muted">—</div>
+      </section>
+      <section class="card">
+        <div class="title">Market</div>
+        <div id="market" class="grid2 small"></div>
+      </section>
+      <section class="card">
+        <div class="title">Sources</div>
+        <div id="sources" class="small"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    (function(){
+      function badge(text){ const s=document.createElement('span'); s.className='badge'; s.textContent=text; return s; }
+      function bcls(val, kind){ try { if(typeof val!=='number') return ''; if(kind==='risk'){ if(val<=3) return 'ok'; if(val<=6) return 'warn'; return 'bad'; } if(kind==='branch'){ if(val>=70) return 'ok'; if(val>=40) return 'warn'; return 'bad'; } } catch{} return ''; }
+      function small(text){ const s=document.createElement('span'); s.className='small'; s.textContent=text; return s; }
+      function rowKV(key, val){ const d=document.createElement('div'); d.className='row'; d.appendChild(small(key+':')); const v=document.createElement('span'); v.textContent=String(val??'—'); d.appendChild(v); return d; }
+      function fmtNum(x){ try { if (x==null) return '—'; const n=Number(x); if (!Number.isFinite(n)) return String(x); if (Math.abs(n)>=1000) return n.toLocaleString(); return String(n); } catch { return String(x); } }
+      function qs(name){ try { const u=new URL(window.location.href); return u.searchParams.get(name)||''; } catch { return ''; } }
+
+      const file = qs('file');
+      const copyBtn = document.getElementById('copyJson');
+      if (file) copyBtn.addEventListener('click', async ()=>{
+        try { await navigator.clipboard.writeText(window.location.origin + '/report/' + file); copyBtn.textContent='Copied'; setTimeout(()=>copyBtn.textContent='Copy JSON link', 1200); } catch {}
+      });
+
+      async function load(){
+        if (!file) { document.getElementById('summary').textContent='Missing ?file parameter'; return; }
+        let data = null; let ok=false;
+        try {
+          const r = await fetch('/report/' + encodeURIComponent(file));
+          ok = r.ok; data = ok ? await r.json() : null;
+        } catch {}
+        if (!ok || !data) { document.getElementById('summary').textContent='Could not load report.'; return; }
+
+        const meta = data || {};
+        const metaRow = document.getElementById('metaRow'); metaRow.innerHTML='';
+        const mint = meta.tokenAddress || meta.mint || meta?.metadata?.tokenAddress || '';
+        const model = meta?.metadata?.model || meta.model || 'gpt-5';
+        const b = badge((mint||'').slice(0,8)+'…'); metaRow.appendChild(b);
+        const m = badge('Model: '+model); metaRow.appendChild(m);
+        const bs = (typeof meta.branchScore==='number')? meta.branchScore : null;
+        const rs = (typeof meta.riskScore==='number')? meta.riskScore : null;
+        if (bs!=null) { const bb=badge('Branch: '+bs); const cls=bcls(bs,'branch'); if (cls) bb.classList.add(cls); metaRow.appendChild(bb); }
+        if (rs!=null) { const br=badge('Risk: '+rs+'/10'); const cls=bcls(rs,'risk'); if (cls) br.classList.add(cls); metaRow.appendChild(br); }
+        const t = meta?.metadata?.timings || {}; if (t.total_ms!=null) metaRow.appendChild(small(Math.round((t.total_ms)/1000)+'s total'));
+        const jsonLink = document.createElement('a'); jsonLink.href='/report/'+encodeURIComponent(file); jsonLink.target='_blank'; jsonLink.textContent='Open JSON'; metaRow.appendChild(jsonLink);
+
+        // Summary
+        const summary = document.getElementById('summary');
+        const s = meta.summary || meta.projectSummary || '(no summary)';
+        summary.textContent = String(s||'(no summary)');
+
+        // Market block
+        const market = document.getElementById('market'); market.innerHTML='';
+        const mk = meta?.metadata?.market || {};
+        market.appendChild(rowKV('FDV', fmtNum(mk.fdv)));
+        market.appendChild(rowKV('Liquidity', fmtNum(mk.liquidity)));
+        market.appendChild(rowKV('Volume 24h', fmtNum(mk.vol24h || mk.volume24h)));
+
+        // Sources
+        const sources = document.getElementById('sources'); sources.innerHTML='';
+        const cites = Array.isArray(meta?.metadata?.web_citations) ? meta.metadata.web_citations : [];
+        if (!cites.length) { sources.textContent='No citations.'; }
+        else {
+          for (const c of cites) {
+            const a = document.createElement('a'); a.href = c.url; a.target = '_blank'; a.rel='noopener'; a.textContent = (c.title ? c.title + ' — ' : '') + (c.domain || c.url);
+            const div = document.createElement('div'); div.className='small'; div.appendChild(a);
+            sources.appendChild(div);
+          }
+        }
+      }
+      load();
+    })();
+  </script>
+</body>
+</html>
+
