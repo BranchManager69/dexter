@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// End-to-end smoke test for the public OAuth-enabled MCP server at clanka.win
-// Uses built-in OIDC endpoints exposed at https://clanka.win/mcp
+// End-to-end smoke test for the public OAuth-enabled MCP server at dexter.cash
+// Uses built-in OIDC endpoints exposed at https://dexter.cash/mcp
 
 import crypto from 'node:crypto';
 import https from 'node:https';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-const BASE = 'https://clanka.win/mcp';
+const BASE = 'https://dexter.cash/mcp';
 
 function b64url(buf){
   return Buffer.from(buf).toString('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
@@ -43,7 +43,7 @@ async function httpsPostForm(url, form, headers={}){
 
 async function main(){
   // 1) Discover metadata from public domain
-  const meta = await httpsGetRaw('https://clanka.win/.well-known/oauth-authorization-server');
+  const meta = await httpsGetRaw('https://dexter.cash/.well-known/oauth-authorization-server');
   console.log('meta.status:', meta.status);
   const discovery = JSON.parse(meta.body || '{}');
   const authzEndpoint = discovery.authorization_endpoint || `${BASE}/authorize`;
@@ -89,4 +89,3 @@ async function main(){
 }
 
 main().catch((e)=>{ console.error('test-mcp-oauth-public error:', e?.message || e); process.exit(1); });
-

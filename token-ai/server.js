@@ -1191,7 +1191,7 @@ app.get('/auth/config', (req, res) => {
 // OAuth metadata for ChatGPT MCP (served at host root for compatibility)
 function buildUiOauthMeta(basePath = '') {
   // Force unified base per Option B to avoid drift from env
-  const PUB = 'https://clanka.win/mcp';
+  const PUB = 'https://dexter.cash/mcp';
   const AUTH = process.env.TOKEN_AI_OIDC_AUTHORIZATION_ENDPOINT || `${PUB}/authorize`;
   const TOKEN = process.env.TOKEN_AI_OIDC_TOKEN_ENDPOINT || `${PUB}/token`;
   const USERINFO = process.env.TOKEN_AI_OIDC_USERINFO || `${PUB}/userinfo`;

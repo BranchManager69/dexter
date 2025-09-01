@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
 const CORS_ORIGIN = process.env.TOKEN_AI_MCP_CORS || '*';
-const PUBLIC_URL = (process.env.TOKEN_AI_MCP_PUBLIC_URL || 'https://clanka.win/mcp').replace(/\/$/, '');
+const PUBLIC_URL = (process.env.TOKEN_AI_MCP_PUBLIC_URL || 'https://dexter.cash/mcp').replace(/\/$/, '');
 
 // OAuth Configuration
 // The SSE transport itself does not perform OAuth; Nginx proxies
