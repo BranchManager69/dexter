@@ -1,8 +1,17 @@
-# Dexter (dexter.cash)
+# Dexter — OAuth‑Enabled Token‑AI MCP (dexter.cash)
 
-A standalone deployment of the Token‑AI UI + Analyzer + MCP stack, rebranded as Dexter. This repo is decoupled from Clanka and runs under systemd with NGINX and TLS.
+![status](https://img.shields.io/badge/status-live-brightgreen)
+![domain](https://img.shields.io/badge/domain-dexter.cash-1f6feb)
+![node](https://img.shields.io/badge/node-20.x-026e00?logo=node.js&logoColor=white)
+![process](https://img.shields.io/badge/process%20manager-systemd-2aa889)
+![proxy](https://img.shields.io/badge/reverse%20proxy-NGINX%2BTLS-009639?logo=nginx&logoColor=white)
+![mcp](https://img.shields.io/badge/MCP-Streamable%20HTTP-8A2BE2)
+
+A standalone deployment of the Token‑AI UI + Analyzer + OAuth‑enabled MCP stack, rebranded as Dexter. This repo is decoupled from Clanka and runs under systemd with NGINX and TLS.
 
 Use this README for day‑to‑day ops. It supersedes any old PM2‑based notes.
+
+Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https://dexter.cash/agent-dashboard.html) · [MCP Health](https://dexter.cash/mcp/health)
 
 ## Contents
 - What’s here
@@ -107,4 +116,3 @@ Use this README for day‑to‑day ops. It supersedes any old PM2‑based notes.
 ---
 
 See `OPERATIONS.md` for exact unit templates and deeper operational notes.
-
