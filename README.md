@@ -15,8 +15,10 @@ Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https
 
 ## Contents
 - What’s here
-- Quickstart
+- Local Replication Quickstart
+- Environment & Ports
 - Operating (systemd)
+- Database (Prisma → Supabase)
 - Updating & Deploying
 - Logs & Debugging
 - MCP endpoints
@@ -30,22 +32,55 @@ Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https
 - Reports & logs: `token-ai/reports/*` and `logs/`.
 - Docs: `OPERATIONS.md` (runnable details), `AGENTS.md` (internal notes).
 
-## Quickstart
-- Paths
-  - Repo root: `~/websites/dexter`
-  - Backend: `~/websites/dexter/token-ai`
-- Env
-  - Authoritative: `~/websites/dexter/.env`
-  - Backend copy: `~/websites/dexter/token-ai/.env`
-  - After edits, copy root → backend: `cp .env token-ai/.env` then restart services.
-- First‑time browser install (Chromium only):
+## Local Replication Quickstart
+- Install dependencies
+  - `npm ci && (cd token-ai && npm ci)`
+- Create env and copy to backend
+  - `cp .env token-ai/.env`
+- Minimal `.env` example (root)
+
+  ```env
+  OPENAI_API_KEY=sk-...
+  # Optional for fast OHLCV
+  BIRDEYE_API_KEY=...
+
+  # Dev/demo mode (simplifies local auth)
+  TOKEN_AI_DEMO_MODE=1
+
+  # Optional: Supabase browser auth for the UI
+  SUPABASE_URL=https://<project>.supabase.co
+  SUPABASE_ANON_KEY=<anon-key>
+
+  # Optional: Postgres for persistence/trading (temporary – Prisma)
+  DATABASE_URL=postgresql://user:pass@localhost:5432/dexter
+  ```
+
+- First‑time browser install (Chromium only)
   - `cd token-ai && npx playwright install chromium`
-- Health checks (HTTPS via NGINX)
-  - UI: `https://dexter.cash/agent-live.html`
-  - Dashboard: `https://dexter.cash/agent-dashboard.html`
-  - MCP Health: `https://dexter.cash/mcp/health`
-  - MCP Metadata: `https://dexter.cash/.well-known/oauth-authorization-server`
-  - MCP Stream (curl): `curl -i -H "Accept: text/event-stream" https://dexter.cash/mcp`
+- Start the UI/API/WS
+  - `npm run start` (defaults to port `3013`)
+  - or `npm run start:ui` (defaults to port `3017`; override via `TOKEN_AI_UI_PORT`)
+- Optional: Start MCP HTTP with OAuth (local)
+  - `npm run mcp:http:oauth` (defaults to `3928`; override via `TOKEN_AI_MCP_PORT`)
+- Open locally
+  - UI: `http://127.0.0.1:<port>/agent-live.html`
+  - Dashboard: `http://127.0.0.1:<port>/agent-dashboard.html`
+  - MCP Health: `http://127.0.0.1:<mcpPort>/mcp/health`
+
+See `AGENTS.md` for contributor guidelines and coding conventions.
+
+## Environment & Ports
+- Authoritative env lives at repo root `.env`; copy to backend: `cp .env token-ai/.env`.
+- UI/API/WS port
+  - Local default: `3013` (`npm run start`)
+  - Alt script default: `3017` (`npm run start:ui` or set `TOKEN_AI_UI_PORT`)
+  - Production (systemd): `3017`
+- MCP HTTP port
+  - Local default: `3928` (`npm run mcp:http:oauth`)
+  - Production (systemd): `3930` (proxied at `/mcp`)
+- Browser UI auth
+  - Optional Supabase: set `SUPABASE_URL` and `SUPABASE_ANON_KEY` to enable magic‑link login.
+  - For localhost, `TOKEN_AI_DEMO_MODE=1` provides a frictionless path without an external IdP.
 
 ## Operating (systemd)
 - Services
@@ -61,6 +96,18 @@ Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https
 - NGINX
   - Config: `/etc/nginx/sites-available/dexter.cash` (enabled)
   - Reload: `sudo nginx -t && sudo systemctl reload nginx`
+
+## Database (Prisma → Supabase)
+- We’re migrating to Supabase to simplify onboarding. Until then, Postgres via Prisma backs persistence/trading features.
+- Running without a DB
+  - For UI + basic analysis, you can skip DB setup. Set `TOKEN_AI_DEMO_MODE=1`. Artifacts are written to `token-ai/reports/` and `token-ai/socials/reports/`.
+- Enabling DB‑backed features now (temporary)
+  - Set `DATABASE_URL` in `.env` (local Postgres or your Supabase Postgres URL)
+  - Generate client: `npx prisma generate`
+  - Apply schema: `npx prisma migrate deploy` (or `npx prisma db push` for dev)
+  - Optional seed: `node prisma/seed.js` (or `ts-node prisma/seed.ts`)
+- Supabase path
+  - You can already point `DATABASE_URL` to Supabase today for Postgres. UI auth also supports `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
 
 ## Updating & Deploying
 - Pull changes
