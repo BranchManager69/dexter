@@ -274,3 +274,10 @@ window.LiveMarket = {
   createMarketMetrics,
   init: initMarket
 };
+
+// Auto-initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initMarket);
+} else {
+  initMarket();
+}

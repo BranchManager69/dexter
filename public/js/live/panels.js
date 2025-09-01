@@ -903,3 +903,10 @@ window.LivePanels = {
   onRunCompleted,
   init: initPanels
 };
+
+// Auto-initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initPanels);
+} else {
+  initPanels();
+}

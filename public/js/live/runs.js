@@ -83,7 +83,20 @@ async function createRun(mint) {
       })
     });
 
-    const j = await r.json().catch(() => ({ ok: false, error: 'Invalid response' }));
+    // Log the actual response for debugging
+    const responseText = await r.text();
+    console.log('Run response status:', r.status);
+    console.log('Run response text:', responseText);
+    
+    let j;
+    try {
+      j = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse response:', parseError);
+      console.error('Raw response:', responseText);
+      window.LiveUtils.showToast('Invalid server response - check console');
+      return false;
+    }
     
     if (j.ok && j.pid) {
       // Add to active runs
@@ -104,7 +117,8 @@ async function createRun(mint) {
       
       return true;
     } else {
-      window.LiveUtils.showToast('Failed to start: ' + (j.error || 'Unknown error'));
+      console.error('Run failed:', j);
+      window.LiveUtils.showToast('Failed to start: ' + (j.error || JSON.stringify(j)));
       return false;
     }
   } catch (e) {
@@ -241,3 +255,10 @@ window.LiveRuns = {
   getAllActiveRuns,
   init: initRuns
 };
+
+// Auto-initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initRuns);
+} else {
+  initRuns();
+}

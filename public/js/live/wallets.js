@@ -296,3 +296,10 @@ window.LiveWallets = {
   renderWalletOverlay,
   init: initWallets
 };
+
+// Auto-initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initWallets);
+} else {
+  initWallets();
+}

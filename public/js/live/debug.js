@@ -335,3 +335,10 @@ window.LiveDebug = {
   vd,
   init: () => vd.init()
 };
+
+// Auto-initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => vd.init());
+} else {
+  vd.init();
+}

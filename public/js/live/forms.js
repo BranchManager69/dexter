@@ -547,3 +547,10 @@ window.LiveForms = {
   hideSuggestionsSoon,
   init: initForms
 };
+
+// Auto-initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initForms);
+} else {
+  initForms();
+}

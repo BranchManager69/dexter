@@ -156,18 +156,24 @@ async function startVoice() {
     if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', '/realtime/sessions response', { status: r.status });
     
     if (!r.ok) {
+      const responseText = await r.text();
+      console.error('Voice session failed:', r.status, responseText);
+      
       try { 
-        const e = await r.json(); 
+        const e = JSON.parse(responseText);
         if (window.LiveDebug?.vd) window.LiveDebug.vd.add('error', 'session mint failed', e); 
         if (e && e.error === 'missing_openai_key') { 
           voiceSetStatus('No Key', 'bad'); 
           window.LiveUtils.showToast('Set OPENAI_API_KEY for voice'); 
           return; 
-        } 
+        }
+        voiceSetStatus(`Error: ${e.error || r.status}`, 'bad');
+        window.LiveUtils.showToast(`Voice failed: ${e.error || responseText}`);
       } catch (e2) { 
-        if (window.LiveDebug?.vd) window.LiveDebug.vd.add('error', 'session mint failed (no JSON)'); 
+        if (window.LiveDebug?.vd) window.LiveDebug.vd.add('error', 'session mint failed (no JSON)', { response: responseText }); 
+        voiceSetStatus(`Error ${r.status}`, 'bad');
+        window.LiveUtils.showToast(`Voice error ${r.status}: ${responseText}`);
       }
-      voiceSetStatus('Error', 'bad'); 
       return;
     }
     
@@ -618,3 +624,10 @@ window.LiveVoice = {
   setMicEnabled,
   init: initVoice
 };
+
+// Auto-initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initVoice);
+} else {
+  initVoice();
+}
