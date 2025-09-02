@@ -394,7 +394,10 @@ async function setupVoiceSession(dc, sessionInfo, model) {
         turn_detection: { type: 'server_vad' }, 
         voice: boot.voice, 
         modalities: ['audio', 'text'], 
-        tool_choice: 'auto' 
+        tool_choice: 'auto',
+        // Improve visibility and reliability by enabling input transcription.
+        // The server may stream transcript events we log below.
+        input_audio_transcription: { model: 'gpt-4o-mini-transcribe' }
       } 
     };
     
@@ -495,8 +498,19 @@ function handleVoiceMessage(msg) {
   
   // Log tool-related frames and unknown types
   const t = String(msg.type || '');
-  if (t.startsWith('response.function_call')) {
+  // Surface high-value frames even when not in verbose mode
+  if (t.startsWith('response.function_call') || t.startsWith('response.mcp_call')) {
     if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'tool-frame', { type: t });
+  } else if (
+    t === 'response.done' ||
+    t === 'response.completed' ||
+    t === 'response.created' ||
+    t.startsWith('response.output_audio') ||
+    t.startsWith('response.audio') ||
+    t.startsWith('conversation.item') ||
+    t.includes('transcription')
+  ) {
+    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'frame', { type: t });
   } else if (window.LiveDebug?.vd?.verbose && t !== 'response.delta') {
     if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'frame', { type: t });
   }
@@ -509,9 +523,14 @@ function handleVoiceMessage(msg) {
     }
   }
   
-  // Handle tool frames
+  // Handle tool/MCP frames (arguments delta, completion, etc.)
   if (window.LiveTools?.handleToolFrames) {
     window.LiveTools.handleToolFrames(msg);
+  }
+
+  // Treat response.done as a completion marker too
+  if (t === 'response.done') {
+    try { voiceAppend('\n'); } catch {}
   }
 }
 

@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import { resolveWalletForRequest } from './wallet-auth.mjs';
+function headersFromExtra(extra){
+  try { if (extra?.requestInfo?.headers) return extra.requestInfo.headers; } catch {}
+  try { if (extra?.request?.headers) return extra.request.headers; } catch {}
+  try { if (extra?.httpRequest?.headers) return extra.httpRequest.headers; } catch {}
+  return {};
+}
 
 // RPC Connection Helper
 async function getRpcConnection(){
@@ -41,7 +47,7 @@ async function resolveWalletIdOrNull(explicitWalletId, extra){
   const r = resolveWalletForRequest(extra);
   if (r?.wallet_id) return String(r.wallet_id);
   try {
-    const headers = extra?.requestInfo?.headers || {};
+    const headers = headersFromExtra(extra);
     const issuer = String(headers['x-user-issuer'] || '').trim();
     const subject = String(headers['x-user-sub'] || '').trim();
     if (issuer && subject) {
@@ -1088,7 +1094,7 @@ export function registerTradingTools(server) {
     try {
       const { PrismaClient } = await import('@prisma/client');
       const prisma = new PrismaClient();
-      const headers = extra?.requestInfo?.headers || {};
+      const headers = headersFromExtra(extra);
       const issuer = String(headers['x-user-issuer']||'');
       const subject = String(headers['x-user-sub']||'');
       const admin = (String(process.env.TOKEN_AI_EXPOSE_ADMIN_WALLETS||'0')==='1');

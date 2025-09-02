@@ -47,10 +47,23 @@ export function parseBearerMap(){
 
 const BEARER_MAP = parseBearerMap();
 
+function headersFromExtra(extra){
+  try {
+    if (extra?.requestInfo?.headers) return extra.requestInfo.headers;
+  } catch {}
+  try {
+    if (extra?.request?.headers) return extra.request.headers;
+  } catch {}
+  try {
+    if (extra?.httpRequest?.headers) return extra.httpRequest.headers;
+  } catch {}
+  return {};
+}
+
 export function resolveWalletForRequest(extra){
   // 1) OAuth identity mapping via oauth_user_wallets
   try {
-    const headers = extra?.requestInfo?.headers || {};
+    const headers = headersFromExtra(extra);
     const issuer = String(headers['x-user-issuer'] || '').trim();
     const subject = String(headers['x-user-sub'] || '').trim();
     if (issuer && subject) {
@@ -72,7 +85,7 @@ export function resolveWalletForRequest(extra){
   } catch {}
   // 0) Session override takes precedence when set
   try {
-    const sid = String(extra?.requestInfo?.headers?.['mcp-session-id'] || 'stdio');
+    const sid = String(headersFromExtra(extra)['mcp-session-id'] || 'stdio');
     if (sessionWalletOverrides.has(sid)) {
       const wid = sessionWalletOverrides.get(sid);
       if (wid) return { wallet_id: wid, source: 'session' };
@@ -80,7 +93,7 @@ export function resolveWalletForRequest(extra){
   } catch {}
   try {
     // HTTP transport: extract from request headers
-    const bearer = getBearerFromHeaders(extra?.requestInfo?.headers || {});
+    const bearer = getBearerFromHeaders(headersFromExtra(extra));
     if (bearer && BEARER_MAP[bearer]) {
       return { wallet_id: BEARER_MAP[bearer], source: 'bearer' };
     }
@@ -135,12 +148,27 @@ export function registerWalletAuthTools(server) {
     title: 'List My Wallets',
     description: 'List wallets linked to the current authenticated user and indicate the default.',
     outputSchema: { wallets: z.array(z.object({ id: z.string(), public_key: z.string(), wallet_name: z.string().nullable(), is_default: z.boolean() })) }
-  }, async (_args, extra) => {
+  }, async (args, extra) => {
     try {
-      const headers = extra?.requestInfo?.headers || {};
-      const issuer = String(headers['x-user-issuer']||'');
-      const subject = String(headers['x-user-sub']||'');
-      if (!issuer || !subject) return { content:[{ type:'text', text:'no_oauth_identity' }], isError:true };
+      const headers = headersFromExtra(extra);
+      const issuer = String(args?.__issuer || headers['x-user-issuer']||'');
+      const subject = String(args?.__sub || headers['x-user-sub']||'');
+      if (!issuer || !subject) {
+        // Fallback: return the currently resolved effective wallet (env/session/bearer)
+        try {
+          const r = resolveWalletForRequest(extra);
+          if (r?.wallet_id) {
+            const { PrismaClient } = await import('@prisma/client');
+            const prisma = new PrismaClient();
+            const w = await prisma.managed_wallets.findUnique({ where: { id: String(r.wallet_id) } });
+            if (w) {
+              const wallets = [{ id: String(w.id), public_key: w.public_key, wallet_name: w.label, is_default: true }];
+              return { structuredContent: { wallets }, content:[{ type:'text', text: JSON.stringify(wallets) }] };
+            }
+          }
+        } catch {}
+        return { content:[{ type:'text', text:'no_oauth_identity' }], isError:true };
+      }
       const { PrismaClient } = await import('@prisma/client');
       const prisma = new PrismaClient();
       const links = await prisma.oauth_user_wallets.findMany({ where: { provider: issuer, subject }, include: { wallet: true }, orderBy: { created_at: 'asc' } });
@@ -155,11 +183,11 @@ export function registerWalletAuthTools(server) {
     description: 'Associate an existing managed wallet with the current OAuth user.',
     inputSchema: { wallet_id: z.string(), make_default: z.boolean().optional() },
     outputSchema: { ok: z.boolean() }
-  }, async ({ wallet_id, make_default }, extra) => {
+  }, async ({ wallet_id, make_default, __issuer, __sub }, extra) => {
     try {
-      const headers = extra?.requestInfo?.headers || {};
-      const issuer = String(headers['x-user-issuer']||'');
-      const subject = String(headers['x-user-sub']||'');
+      const headers = headersFromExtra(extra);
+      const issuer = String(__issuer || headers['x-user-issuer']||'');
+      const subject = String(__sub || headers['x-user-sub']||'');
       if (!issuer || !subject) return { content:[{ type:'text', text:'no_oauth_identity' }], isError:true };
       const { PrismaClient } = await import('@prisma/client');
       const prisma = new PrismaClient();
@@ -187,11 +215,11 @@ export function registerWalletAuthTools(server) {
     description: 'Set the default wallet for the current OAuth user.',
     inputSchema: { wallet_id: z.string() },
     outputSchema: { ok: z.boolean() }
-  }, async ({ wallet_id }, extra) => {
+  }, async ({ wallet_id, __issuer, __sub }, extra) => {
     try {
-      const headers = extra?.requestInfo?.headers || {};
-      const issuer = String(headers['x-user-issuer']||'');
-      const subject = String(headers['x-user-sub']||'');
+      const headers = headersFromExtra(extra);
+      const issuer = String(__issuer || headers['x-user-issuer']||'');
+      const subject = String(__sub || headers['x-user-sub']||'');
       if (!issuer || !subject) return { content:[{ type:'text', text:'no_oauth_identity' }], isError:true };
       const { PrismaClient } = await import('@prisma/client');
       const prisma = new PrismaClient();
@@ -208,11 +236,11 @@ export function registerWalletAuthTools(server) {
     description: 'Remove association between current OAuth user and a wallet.',
     inputSchema: { wallet_id: z.string() },
     outputSchema: { ok: z.boolean() }
-  }, async ({ wallet_id }, extra) => {
+  }, async ({ wallet_id, __issuer, __sub }, extra) => {
     try {
-      const headers = extra?.requestInfo?.headers || {};
-      const issuer = String(headers['x-user-issuer']||'');
-      const subject = String(headers['x-user-sub']||'');
+      const headers = headersFromExtra(extra);
+      const issuer = String(__issuer || headers['x-user-issuer']||'');
+      const subject = String(__sub || headers['x-user-sub']||'');
       if (!issuer || !subject) return { content:[{ type:'text', text:'no_oauth_identity' }], isError:true };
       const { PrismaClient } = await import('@prisma/client');
       const prisma = new PrismaClient();
@@ -250,14 +278,20 @@ export function registerWalletAuthTools(server) {
       source: z.string(),
       wallet_id: z.string().nullable(),
       session_id: z.string().nullable(),
+      transport: z.string().nullable(),
+      issuer: z.string().nullable(),
+      subject: z.string().nullable(),
       default_wallet: z.string().nullable(),
       bearer_header: z.string().nullable(),
       bearer_preview: z.string().nullable(),
       mapping_hit: z.boolean().optional(),
     }
   }, async (_args, extra) => {
-    const headers = extra?.requestInfo?.headers || {};
+    const headers = headersFromExtra(extra);
     const session_id = String(headers['mcp-session-id'] || 'stdio');
+    const transport = headers['mcp-session-id'] ? 'http' : 'stdio';
+    const issuer = headers['x-user-issuer'] ? String(headers['x-user-issuer']) : null;
+    const subject = headers['x-user-sub'] ? String(headers['x-user-sub']) : null;
     const def = process.env.TOKEN_AI_DEFAULT_WALLET_ID || null;
     const bear = getBearerFromHeaders(headers);
     const bearPrev = bear ? `${bear.slice(0,4)}…${bear.slice(-4)}` : null;
@@ -269,6 +303,9 @@ export function registerWalletAuthTools(server) {
         source: resolved.source, 
         wallet_id: resolved.wallet_id, 
         session_id, 
+        transport,
+        issuer,
+        subject,
         default_wallet: def, 
         bearer_header: bear || null, 
         bearer_preview: bearPrev, 
@@ -276,5 +313,56 @@ export function registerWalletAuthTools(server) {
       }, 
       content:[{ type:'text', text: JSON.stringify({ source: resolved.source, wallet_id: resolved.wallet_id, session_id }, null, 2) }] 
     };
+  });
+
+  // Generate a new wallet and link to current OAuth user
+  server.registerTool('generate_wallet', {
+    title: 'Generate Wallet',
+    description: 'Creates a new managed wallet and links it to the current OAuth user (non-admins limited to 10).',
+    inputSchema: { label: z.string().optional() },
+    outputSchema: { wallet_id: z.string(), public_key: z.string(), is_default: z.boolean() }
+  }, async ({ label }, extra) => {
+    try {
+      const headers = extra?.requestInfo?.headers || {};
+      const issuer = String(headers['x-user-issuer']||'');
+      const subject = String(headers['x-user-sub']||'');
+      if (!issuer || !subject) return { content:[{ type:'text', text:'no_oauth_identity' }], isError:true };
+      const admin = isAdminFromHeaders(headers);
+      const { PrismaClient } = await import('@prisma/client');
+      const prisma = new PrismaClient();
+      if (!admin) {
+        const count = await prisma.oauth_user_wallets.count({ where: { provider: issuer, subject } });
+        if (count >= 10) return { content:[{ type:'text', text:'max_wallets_reached' }], isError:true };
+      }
+      const { randomBytes, createCipheriv } = await import('node:crypto');
+      const { Keypair } = await import('@solana/web3.js');
+      const { default: { v4: uuidv4 } } = await import('uuid');
+      const kp = Keypair.generate();
+      const seed32 = Buffer.from(kp.secretKey).subarray(0, 32);
+      const encKeyHex = process.env.WALLET_ENCRYPTION_KEY || '';
+      if (!encKeyHex || encKeyHex.length !== 64) return { content:[{ type:'text', text:'missing_encryption_key' }], isError:true };
+      const key = Buffer.from(encKeyHex, 'hex');
+      const iv = randomBytes(12);
+      const cipher = createCipheriv('aes-256-gcm', key, iv);
+      const encrypted = Buffer.concat([cipher.update(seed32), cipher.final()]);
+      const tag = cipher.getAuthTag();
+      const payload = {
+        version: 'v2_seed_unified',
+        nonce: iv.toString('hex'),
+        encrypted: encrypted.toString('hex'),
+        authTag: tag.toString('hex')
+      };
+      const wid = uuidv4();
+      const pub = kp.publicKey.toBase58();
+      const name = label || `Wallet ${pub.slice(0,4)}…${pub.slice(-4)}`;
+      await prisma.managed_wallets.create({ data: { id: wid, public_key: pub, encrypted_private_key: JSON.stringify(payload), label: name, status: 'active' } });
+      // Link and set default
+      await prisma.oauth_user_wallets.create({ data: { provider: issuer, subject, wallet_id: wid, default_wallet: false } });
+      await prisma.oauth_user_wallets.updateMany({ where: { provider: issuer, subject }, data: { default_wallet: false } });
+      await prisma.oauth_user_wallets.update({ where: { provider_subject_wallet_id: { provider: issuer, subject, wallet_id: wid } }, data: { default_wallet: true } });
+      return { structuredContent: { wallet_id: wid, public_key: pub, is_default: true }, content:[{ type:'text', text: `wallet_id=${wid} ${pub}` }] };
+    } catch (e) {
+      return { content:[{ type:'text', text: e?.message || 'generate_failed' }], isError:true };
+    }
   });
 }

@@ -202,7 +202,7 @@ function normalizeToolEvent(msg) {
   }
   if (msg.type === 'response.mcp_call.arguments.delta' || 
       msg.type === 'response.mcp_call_arguments.delta') {
-    return { ...msg, type: 'response.function_call.arguments.delta', callType: 'mcp' };
+    return { ...msg, type: 'response.function_call_arguments.delta', callType: 'mcp' };
   }
   if (msg.type === 'response.mcp_call.completed' || 
       msg.type === 'response.mcp_call.done') {
@@ -235,7 +235,7 @@ async function handleToolFrames(msg) {
       return;
     }
     
-    if (msg.type === 'response.function_call.arguments.delta') {
+    if (msg.type === 'response.function_call.arguments.delta' || msg.type === 'response.function_call_arguments.delta') {
       const id = msg.id || msg.call_id || (msg.item?.id) || null; 
       if (!id) return; 
       const rec = toolBuf.get(id); 
@@ -268,7 +268,19 @@ async function handleToolFrames(msg) {
         });
       }
       
-      // Call server tool endpoint
+      // If this was an MCP call, Realtime executes it server-side.
+      // We only log completion and do NOT duplicate the call or send outputs.
+      if (msg.callType === 'mcp') {
+        if (window.LiveDebug?.vd) {
+          window.LiveDebug.vd.add('info', 'mcp tool handled by realtime', {
+            id,
+            name: rec.name
+          });
+        }
+        return;
+      }
+
+      // Call server tool endpoint for local function tools
       const hdr = { 'content-type': 'application/json' }; 
       try { 
         if (window.AGENT_TOKEN) hdr['x-agent-token'] = String(window.AGENT_TOKEN); 

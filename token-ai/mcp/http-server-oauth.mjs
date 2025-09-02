@@ -86,6 +86,7 @@ if (RSA_PRIVATE_PEM) {
 const transports = new Map(); // sessionId -> transport
 const servers = new Map(); // sessionId -> McpServer instance
 const sessionUsers = new Map(); // sessionId -> identity (from IdP) or token preview
+const sessionIdentity = new Map(); // sessionId -> { issuer, sub, email }
 // Simple in-process OAuth data stores (built-in provider)
 const oauthCodes = new Map(); // code -> { codeChallenge, method, scope, client_id, redirect_uri, state, createdAt }
 const issuedTokens = new Map(); // token -> { sub, scope, createdAt, expiresAt, refreshToken }
@@ -220,6 +221,22 @@ function normalizeAcceptHeader(req){
       req.headers['accept'] = 'application/json, text/event-stream';
     }
   } catch {}
+}
+
+function injectIdentityIntoBody(body, sessionId){
+  try {
+    if (!body || typeof body !== 'object') return body;
+    if (!sessionId) return body;
+    const ident = sessionIdentity.get(sessionId);
+    if (!ident) return body;
+    if (body.method === 'tools/call' && body.params && typeof body.params === 'object') {
+      if (!body.params.arguments || typeof body.params.arguments !== 'object') body.params.arguments = {};
+      body.params.arguments.__issuer = String(ident.issuer||'');
+      body.params.arguments.__sub = String(ident.sub||'');
+      if (ident.email) body.params.arguments.__email = String(ident.email);
+    }
+  } catch {}
+  return body;
 }
 
 // Validate OAuth token via OIDC userinfo endpoint (preferred) or GitHub API when configured.
@@ -819,9 +836,23 @@ const server = http.createServer(async (req, res) => {
             if (ident.issuer && !req.headers['x-user-issuer']) req.headers['x-user-issuer'] = String(ident.issuer);
             if (ident.sub && !req.headers['x-user-sub']) req.headers['x-user-sub'] = String(ident.sub);
             if (ident.email && !req.headers['x-user-email']) req.headers['x-user-email'] = String(ident.email);
+            // Seed per-session wallet override if not set yet
+            try {
+              const { sessionWalletOverrides } = await import('./tools/wallet-auth.mjs');
+              if (!sessionWalletOverrides.get(sessionId)) {
+                const { PrismaClient } = await import('@prisma/client');
+                const prisma = new PrismaClient();
+                const link = await prisma.oauth_user_wallets.findFirst({ where: { provider: String(ident.issuer), subject: String(ident.sub), default_wallet: true } });
+                if (link?.wallet_id) sessionWalletOverrides.set(sessionId, String(link.wallet_id));
+              }
+            } catch {}
           }
         } catch {}
-        await transport.handleRequest(req, res, await readBody(req));
+        {
+          const body = await readBody(req);
+          const patched = injectIdentityIntoBody(body, sessionId);
+          await transport.handleRequest(req, res, patched);
+        }
         return;
       }
       // New session: initialize
@@ -857,6 +888,15 @@ const server = http.createServer(async (req, res) => {
             const sub = req.headers['x-user-sub'] || '';
             const email = req.headers['x-user-email'] || '';
             sessionIdentity.set(sid, { issuer, sub, email });
+          } catch {}
+          // Seed per-session wallet override from OAuth mapping (if exists)
+          try {
+            const { sessionWalletOverrides } = await import('./tools/wallet-auth.mjs');
+            const { PrismaClient } = await import('@prisma/client');
+            const prisma = new PrismaClient();
+            const ident = sessionIdentity.get(sid) || {};
+            const link = ident.issuer && ident.sub ? await prisma.oauth_user_wallets.findFirst({ where: { provider: String(ident.issuer), subject: String(ident.sub), default_wallet: true } }) : null;
+            if (link?.wallet_id) sessionWalletOverrides.set(sid, String(link.wallet_id));
           } catch {}
           try { console.log(`[mcp] initialize ok user=${req.oauthUser} sid=${sid}`); } catch {}
         } else {
