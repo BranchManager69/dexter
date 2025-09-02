@@ -1,8 +1,18 @@
 import { jwtVerifyHS256 } from '../utils/jwt.js';
 
 // Build OAuth metadata for ChatGPT MCP (served at host root and under /mcp-proxy)
-function buildUiOauthMeta() {
-  const PUB = 'https://dexter.cash/mcp';
+function buildUiOauthMeta(req) {
+  // Prefer explicit public URL from env; else derive from request
+  const envPub = process.env.TOKEN_AI_MCP_PUBLIC_URL || '';
+  const reqBase = (() => {
+    try {
+      const host = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').trim();
+      const proto = String(req?.headers?.['x-forwarded-proto'] || '').toLowerCase() || 'https';
+      if (host) return `${proto}://${host}/mcp`;
+    } catch {}
+    return 'https://dexter.cash/mcp';
+  })();
+  const PUB = (envPub || reqBase).replace(/\/$/, '');
   const AUTH = process.env.TOKEN_AI_OIDC_AUTHORIZATION_ENDPOINT || `${PUB}/authorize`;
   const TOKEN = process.env.TOKEN_AI_OIDC_TOKEN_ENDPOINT || `${PUB}/token`;
   const USERINFO = process.env.TOKEN_AI_OIDC_USERINFO || `${PUB}/userinfo`;
@@ -30,7 +40,7 @@ export function registerMcpProxyRoutes(app) {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.end(JSON.stringify(buildUiOauthMeta()));
+      res.end(JSON.stringify(buildUiOauthMeta(req)));
     } catch {
       try { res.status(500).json({ error: 'oauth_meta_error' }); } catch {}
     }
@@ -41,7 +51,7 @@ export function registerMcpProxyRoutes(app) {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Access-Control-Allow-Origin', '*');
-      const meta = buildUiOauthMeta();
+      const meta = buildUiOauthMeta(req);
       res.end(JSON.stringify({ issuer: meta.issuer, authorization_endpoint: meta.authorization_endpoint, token_endpoint: meta.token_endpoint, userinfo_endpoint: meta.userinfo_endpoint }));
     } catch {
       try { res.status(500).json({ error: 'oidc_meta_error' }); } catch {}
@@ -54,7 +64,7 @@ export function registerMcpProxyRoutes(app) {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.end(JSON.stringify(buildUiOauthMeta()));
+      res.end(JSON.stringify(buildUiOauthMeta(req)));
     } catch {
       try { res.status(500).json({ error: 'oauth_meta_error' }); } catch {}
     }
@@ -65,7 +75,7 @@ export function registerMcpProxyRoutes(app) {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Access-Control-Allow-Origin', '*');
-      const meta = buildUiOauthMeta();
+      const meta = buildUiOauthMeta(req);
       res.end(JSON.stringify({ issuer: meta.issuer, authorization_endpoint: meta.authorization_endpoint, token_endpoint: meta.token_endpoint, userinfo_endpoint: meta.userinfo_endpoint }));
     } catch {
       try { res.status(500).json({ error: 'oidc_meta_error' }); } catch {}
@@ -224,4 +234,3 @@ export function registerMcpProxyRoutes(app) {
 }
 
 export default { registerMcpProxyRoutes };
-

@@ -30,7 +30,7 @@ export function getRealtimeTools() {
     { type:'function', name:'list_aliases', description:'List wallet aliases for current user', parameters:{ type:'object', properties:{} } },
     { type:'function', name:'add_wallet_alias', description:'Add or update a wallet alias', parameters:{ type:'object', properties:{ wallet_id:{ type:'string' }, alias:{ type:'string' } }, required:['wallet_id','alias'] } },
     { type:'function', name:'set_default_wallet', description:'Set default wallet by id/alias/hint', parameters:{ type:'object', properties:{ wallet_id:{ type:'string' }, alias:{ type:'string' }, wallet_alias:{ type:'string' }, wallet_hint:{ type:'string' }, wallet:{ type:'string' } } } },
-    { type:'function', name:'list_wallet_token_balances', description:'List SPL balances for a wallet', parameters:{ type:'object', properties:{ wallet_id:{ type:'string' }, min_ui:{ type:'number' }, limit:{ type:'integer' } }, required:['wallet_id'] } },
+    { type:'function', name:'list_wallet_token_balances', description:'List wallet balances, including native SOL and SPL tokens', parameters:{ type:'object', properties:{ wallet_id:{ type:'string' }, min_ui:{ type:'number' }, limit:{ type:'integer' } }, required:['wallet_id'] } },
 
     // Trade previews
     { type:'function', name:'execute_buy_preview', description:'Preview a buy', parameters:{ type:'object', properties:{ token_mint:{ type:'string' }, sol_amount:{ type:'number' }, slippage_bps:{ type:'integer' } }, required:['token_mint','sol_amount'] } },

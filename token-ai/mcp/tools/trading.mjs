@@ -42,11 +42,11 @@ export function registerTradingTools(server) {
   // Inputs: wallet_id (managed_wallets ID), min_ui?, limit?
   server.registerTool('list_wallet_token_balances', {
     title: 'List Wallet Token Balances',
-    description: 'List SPL token balances held by a managed wallet (descending by UI amount).',
+    description: 'List SPL token balances held by a managed wallet (descending by UI amount). Includes native SOL.',
     inputSchema: {
       wallet_id: z.string().optional(),
       min_ui: z.number().nonnegative().optional(),
-      limit: z.number().int().optional(),
+      limit: z.number().int().optional()
     },
     outputSchema: {
       items: z.array(z.object({
@@ -62,6 +62,7 @@ export function registerTradingTools(server) {
       const conn = await getRpcConnection();
       const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
       const { TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
+      const { SOL_MINT, SOL_DECIMALS } = await import('../../trade-manager/jupiter-api.js');
       let wid = wallet_id;
       if (!wid) {
         const r = resolveWalletForRequest(extra);
@@ -71,6 +72,21 @@ export function registerTradingTools(server) {
       const { publicKey } = await loadWallet(wid);
       const resp = await conn.getParsedTokenAccountsByOwner(publicKey, { programId: TOKEN_PROGRAM_ID });
       const items = [];
+      let solItem = null;
+      // Always include native SOL as a pseudo-token row (will be placed first)
+      try {
+        const lamports = await conn.getBalance(publicKey, 'confirmed');
+        const ui = Number(lamports) / Math.pow(10, SOL_DECIMALS);
+        if (ui > Number(min_ui || 0)) {
+          solItem = {
+            mint: SOL_MINT,
+            ata: 'native',
+            decimals: SOL_DECIMALS,
+            amount_ui: Number(ui.toFixed(9)),
+            amount_raw: String(lamports)
+          };
+        }
+      } catch {}
       for (const it of resp.value || []) {
         try {
           const info = it.account?.data?.parsed?.info;
@@ -88,8 +104,10 @@ export function registerTradingTools(server) {
           });
         } catch {}
       }
+      // Sort SPL tokens by amount_ui desc, then prepend SOL if present
       items.sort((a,b)=> b.amount_ui - a.amount_ui);
-      const out = (limit && Number(limit) > 0) ? items.slice(0, Number(limit)) : items;
+      const combined = solItem ? [solItem, ...items] : items;
+      const out = (limit && Number(limit) > 0) ? combined.slice(0, Number(limit)) : combined;
       return { structuredContent: { items: out }, content: [{ type:'text', text: JSON.stringify(out) }] };
     } catch (e) {
       const diag = {
@@ -122,25 +140,50 @@ export function registerTradingTools(server) {
         liquidity_usd: z.number(),
         volume_24h: z.number().optional(),
         price_usd: z.number().optional(),
+        // Enriched metrics (all optional for backward compatibility)
+        price_change_24h_pct: z.number().optional(),
+        price_change_h1_pct: z.number().optional(),
+        fdv_usd: z.number().optional(),
+        market_cap_usd: z.number().optional(),
+        txns_24h_buys: z.number().int().optional(),
+        txns_24h_sells: z.number().int().optional(),
+        pair_created_at: z.number().int().optional(),
         dex_id: z.string().optional(),
         pair_address: z.string().optional(),
-        url: z.string().nullable()
+        url: z.string().nullable(),
+        // Optional per-pair details for the top few pairs backing this token
+        pairs: z.array(z.object({
+          dex_id: z.string().nullable().optional(),
+          pair_address: z.string().nullable().optional(),
+          url: z.string().nullable().optional(),
+          price_usd: z.number().optional(),
+          liquidity_usd: z.number().optional(),
+          real_liquidity_usd: z.number().optional(),
+          quote_token: z.string().optional(),
+          quote_amount: z.number().optional(),
+          price_change_24h_pct: z.number().optional(),
+          price_change_h1_pct: z.number().optional(),
+          txns_24h_buys: z.number().int().optional(),
+          txns_24h_sells: z.number().int().optional(),
+          fdv_usd: z.number().optional(),
+          market_cap_usd: z.number().optional(),
+          pair_created_at: z.number().int().optional(),
+        })).optional()
       }))
     }
   }, async ({ query, chain = 'solana', limit = 5 }) => {
     try {
       const fetch = (await import('node-fetch')).default;
       
-      // Fetch actual SOL price from CoinGecko
-      const priceResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-      if (!priceResponse.ok) {
-        throw new Error('Failed to fetch SOL price from CoinGecko');
-      }
-      const priceData = await priceResponse.json();
-      const solPrice = priceData?.solana?.usd;
-      if (!solPrice) {
-        throw new Error('Invalid SOL price data from CoinGecko');
-      }
+      // Fetch SOL price from CoinGecko with graceful fallback (avoid hard failures)
+      let solPrice = null;
+      try {
+        const priceResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+        if (priceResponse.ok) {
+          const priceData = await priceResponse.json();
+          solPrice = priceData?.solana?.usd || null;
+        }
+      } catch {}
       
       const url = `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(query)}`;
       const response = await fetch(url, {
@@ -173,8 +216,8 @@ export function registerTradingTools(server) {
         // Calculate real liquidity value based on quote token
         let realLiquidityUsd = 0;
         if (quoteSymbol === 'SOL') {
-          // Use the actual SOL price fetched above
-          realLiquidityUsd = quoteLiq * solPrice;
+          // Prefer actual SOL price; fallback to reported USD liquidity
+          realLiquidityUsd = solPrice ? (quoteLiq * solPrice) : Number(pair?.liquidity?.usd || 0);
         } else if (quoteSymbol === 'USDC' || quoteSymbol === 'USDT') {
           realLiquidityUsd = quoteLiq; // Stablecoins are 1:1 with USD
         } else {
@@ -222,7 +265,14 @@ export function registerTradingTools(server) {
               quote_token: quoteSymbol,
               quote_amount: quoteLiq,
               url: pair?.url || null,
-              price_usd: (pair?.priceUsd != null ? Number(pair.priceUsd) : null)
+              price_usd: (pair?.priceUsd != null ? Number(pair.priceUsd) : null),
+              price_change_24h_pct: (pair?.priceChange?.h24 != null ? Number(pair.priceChange.h24) : undefined),
+              price_change_h1_pct: (pair?.priceChange?.h1 != null ? Number(pair.priceChange.h1) : undefined),
+              txns_24h_buys: (pair?.txns?.h24?.buys != null ? Number(pair.txns.h24.buys) : undefined),
+              txns_24h_sells: (pair?.txns?.h24?.sells != null ? Number(pair.txns.h24.sells) : undefined),
+              fdv_usd: (pair?.fdv != null ? Number(pair.fdv) : undefined),
+              market_cap_usd: (pair?.marketCap != null ? Number(pair.marketCap) : undefined),
+              pair_created_at: (pair?.pairCreatedAt != null ? Number(pair.pairCreatedAt) : undefined)
             });
           }
           tokenMap.set(addr, rec);
@@ -287,23 +337,67 @@ export function registerTradingTools(server) {
       candidates = candidates.filter(c => 
         c.address.toLowerCase() !== GENERIC_ADDR_SOL && 
         !GENERIC_SYMS.has(c.symbol) &&
-        c.roles.includes('base')
+        // roles is a Set; use .has instead of .includes to avoid runtime error
+        c.roles && typeof c.roles.has === 'function' ? c.roles.has('base') : false
       );
       
       candidates.sort((a, b) => b.score - a.score);
       
-      const results = candidates.slice(0, limit).map(c => ({
-        address: c.address,
-        symbol: c.symbol,
-        name: c.name,
-        liquidity_usd: c.real_liquidity_usd,
-        volume_24h: c.volume_24h || 0,
-        price_usd: c.pairs[0]?.price_usd || null,
-        dex_id: c.pairs[0]?.dex_id || null,
-        pair_address: c.pairs[0]?.pair_address || null,
-        url: c.pairs[0]?.url || null
-      }));
-      
+      const top = candidates.slice(0, limit);
+      const totalScore = top.reduce((s, r) => s + (Number(r.score)||0), 0) || 0;
+      const results = top.map(c => {
+        const p0 = c.pairs && c.pairs.length ? c.pairs[0] : undefined;
+        const price_usd = (p0 && p0.price_usd != null) ? Number(p0.price_usd) : undefined;
+        const dex_id = (p0 && p0.dex_id) ? String(p0.dex_id) : undefined;
+        const pair_address = (p0 && p0.pair_address) ? String(p0.pair_address) : undefined;
+        const url = (p0 && p0.url) ? String(p0.url) : null; // nullable per schema
+        const price_change_24h_pct = (p0 && p0.price_change_24h_pct != null) ? Number(p0.price_change_24h_pct) : undefined;
+        const price_change_h1_pct = (p0 && p0.price_change_h1_pct != null) ? Number(p0.price_change_h1_pct) : undefined;
+        const fdv_usd = (p0 && p0.fdv_usd != null) ? Number(p0.fdv_usd) : undefined;
+        const market_cap_usd = (p0 && p0.market_cap_usd != null) ? Number(p0.market_cap_usd) : undefined;
+        const txns_24h_buys = (p0 && p0.txns_24h_buys != null) ? Number(p0.txns_24h_buys) : undefined;
+        const txns_24h_sells = (p0 && p0.txns_24h_sells != null) ? Number(p0.txns_24h_sells) : undefined;
+        const pair_created_at = (p0 && p0.pair_created_at != null) ? Number(p0.pair_created_at) : undefined;
+        // confidence is used for human-readable text only; avoid including in structured object
+        const confidence = totalScore > 0 ? Math.round((Number(c.score)||0) / totalScore * 100) : undefined;
+        const pairs = Array.isArray(c.pairs) ? c.pairs.slice(0,3).map(p => ({
+          dex_id: (p && p.dex_id) ? String(p.dex_id) : undefined,
+          pair_address: (p && p.pair_address) ? String(p.pair_address) : undefined,
+          url: (p && p.url) ? String(p.url) : null,
+          price_usd: (p && p.price_usd != null) ? Number(p.price_usd) : undefined,
+          liquidity_usd: (p && p.liquidity_usd != null) ? Number(p.liquidity_usd) : undefined,
+          real_liquidity_usd: (p && p.real_liquidity_usd != null) ? Number(p.real_liquidity_usd) : undefined,
+          quote_token: (p && p.quote_token) ? String(p.quote_token) : undefined,
+          quote_amount: (p && p.quote_amount != null) ? Number(p.quote_amount) : undefined,
+          price_change_24h_pct: (p && p.price_change_24h_pct != null) ? Number(p.price_change_24h_pct) : undefined,
+          price_change_h1_pct: (p && p.price_change_h1_pct != null) ? Number(p.price_change_h1_pct) : undefined,
+          txns_24h_buys: (p && p.txns_24h_buys != null) ? Number(p.txns_24h_buys) : undefined,
+          txns_24h_sells: (p && p.txns_24h_sells != null) ? Number(p.txns_24h_sells) : undefined,
+          fdv_usd: (p && p.fdv_usd != null) ? Number(p.fdv_usd) : undefined,
+          market_cap_usd: (p && p.market_cap_usd != null) ? Number(p.market_cap_usd) : undefined,
+          pair_created_at: (p && p.pair_created_at != null) ? Number(p.pair_created_at) : undefined,
+        })) : undefined;
+        return {
+          address: String(c.address || ''),
+          symbol: String(c.symbol || ''),
+          name: (c.name != null ? String(c.name) : null),
+          liquidity_usd: c.real_liquidity_usd,
+          volume_24h: c.volume_24h || 0,
+          price_usd,
+          price_change_24h_pct,
+          price_change_h1_pct,
+          fdv_usd,
+          market_cap_usd,
+          txns_24h_buys,
+          txns_24h_sells,
+          pair_created_at,
+          dex_id,
+          pair_address,
+          url,
+          pairs
+        };
+      });
+
       return { structuredContent: { results }, content: [{ type:'text', text: JSON.stringify(results) }] };
     } catch (e) {
       return { content: [{ type:'text', text: e?.message || 'resolve_failed' }], isError: true };
@@ -489,7 +583,7 @@ export function registerTradingTools(server) {
     }
   });
 
-  // Execution Tools (simplified placeholders)
+  // Execution Tools (real implementations)
   server.registerTool('execute_buy', {
     title: 'Execute Buy',
     description: 'Execute a token buy order using SOL from a managed wallet (on-chain).',
@@ -503,11 +597,80 @@ export function registerTradingTools(server) {
     outputSchema: {
       success: z.boolean(),
       tx_hash: z.string().nullable(),
+      wallet_id: z.string().optional(),
+      wallet_address: z.string().nullable().optional(),
+      action: z.string().optional(),
+      token_mint: z.string().optional(),
+      tokens_bought_ui: z.string().nullable().optional(),
+      sol_spent_ui: z.string().nullable().optional(),
+      price_impact: z.any().optional(),
+      solscan_url: z.string().nullable().optional(),
       error: z.string().optional()
     }
   }, async ({ wallet_id, token_mint, sol_amount, slippage_bps, priority_lamports }, extra) => {
-    // Placeholder implementation
-    return { content: [{ type:'text', text: 'execute_buy_placeholder' }], isError: true };
+    try {
+      const conn = await getRpcConnection();
+      const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
+      const { SOL_MINT, SOL_DECIMALS, getQuote, getSwapTransaction, deserializeTransaction, formatTokenAmount } = await import('../../trade-manager/jupiter-api.js');
+      let wid = wallet_id; if (!wid) { const r = resolveWalletForRequest(extra); wid = r.wallet_id; if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true }; }
+      const { keypair, publicKey, wallet } = await loadWallet(wid);
+      // Compute desired spend and ensure we have enough SOL to cover spend + fees/ATA rents (WSOL + output if needed)
+      let lamports = BigInt(Math.floor(Number(sol_amount) * Math.pow(10, SOL_DECIMALS)));
+      const curLamports = BigInt(await conn.getBalance(publicKey, 'confirmed'));
+      // Check if WSOL ATA and output ATA exist
+      let hasOutAta = false, hasWsolAta = false;
+      try {
+        const { PublicKey } = await import('@solana/web3.js');
+        const { getAssociatedTokenAddress, getAccount } = await import('@solana/spl-token');
+        const { SOL_MINT } = await import('../../trade-manager/jupiter-api.js');
+        const outMintPk = new PublicKey(token_mint);
+        const outAta = await getAssociatedTokenAddress(outMintPk, publicKey);
+        try { await getAccount(conn, outAta); hasOutAta = true; } catch { hasOutAta = false; }
+        const wsolMintPk = new PublicKey(SOL_MINT);
+        const wsolAta = await getAssociatedTokenAddress(wsolMintPk, publicKey);
+        try { await getAccount(conn, wsolAta); hasWsolAta = true; } catch { hasWsolAta = false; }
+      } catch {}
+      const RENT_ATA = 2_500_000n; // safe upper estimate for ATA rent
+      const BASE_FEES = 400_000n;  // approx compute/prioritization cushion
+      let buffer = BASE_FEES;
+      buffer += hasWsolAta ? 500_000n : RENT_ATA; // WSOL path almost always needed
+      buffer += hasOutAta ? 0n : RENT_ATA;        // output mint ATA if missing
+      if (curLamports < lamports + buffer) {
+        const maxSpend = curLamports > buffer ? (curLamports - buffer) : 0n;
+        if (maxSpend <= 0n) {
+          return { content:[{ type:'text', text:`insufficient_sol: have=${curLamports} need≈${lamports+buffer}` }], isError:true };
+        }
+        lamports = maxSpend; // reduce spend to available minus buffer
+      }
+      const quote = await getQuote({ inputMint: SOL_MINT, outputMint: token_mint, amount: String(lamports), slippageBps: Number(slippage_bps)||100 });
+      const microLamports = Number(priority_lamports) || await getAdaptivePriorityMicroLamports(10000, 0.9);
+      const swapResponse = await getSwapTransaction({ quoteResponse: quote, userPublicKey: publicKey, wrapAndUnwrapSol: true, priorityLamports: microLamports });
+      const transaction = deserializeTransaction(swapResponse.swapTransaction);
+      transaction.sign([keypair]);
+      const serialized = transaction.serialize();
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+      const sig = await conn.sendRawTransaction(serialized, { skipPreflight: false, maxRetries: 3 });
+      await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+      const decimals = await getTokenDecimals(token_mint);
+      const outUi = quote?.outAmount ? formatTokenAmount(quote.outAmount, decimals) : null;
+      return {
+        structuredContent: {
+          success: true,
+          tx_hash: sig,
+          wallet_id: wid,
+          wallet_address: wallet?.public_key || publicKey.toBase58(),
+          action: 'buy',
+          token_mint,
+          tokens_bought_ui: outUi,
+          sol_spent_ui: formatTokenAmount(String(lamports), SOL_DECIMALS),
+          price_impact: quote?.priceImpactPct ?? null,
+          solscan_url: `https://solscan.io/tx/${sig}`
+        },
+        content: [{ type:'text', text: `tx=${sig}` }]
+      };
+    } catch (e) {
+      return { content: [{ type:'text', text: e?.message || 'buy_failed' }], isError: true };
+    }
   });
 
   server.registerTool('execute_sell', {
@@ -524,11 +687,63 @@ export function registerTradingTools(server) {
     outputSchema: {
       success: z.boolean(),
       tx_hash: z.string().nullable(),
+      wallet_id: z.string().optional(),
+      wallet_address: z.string().nullable().optional(),
+      action: z.string().optional(),
+      token_mint: z.string().optional(),
+      tokens_sold_ui: z.string().nullable().optional(),
+      sol_received_ui: z.string().nullable().optional(),
+      price_impact: z.any().optional(),
+      solscan_url: z.string().nullable().optional(),
       error: z.string().optional()
     }
   }, async ({ wallet_id, token_mint, token_amount, slippage_bps, priority_lamports, output_mint }, extra) => {
-    // Placeholder implementation 
-    return { content: [{ type:'text', text: 'execute_sell_placeholder' }], isError: true };
+    try {
+      const conn = await getRpcConnection();
+      const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
+      let wid = wallet_id; if (!wid) { const r = resolveWalletForRequest(extra); wid = r.wallet_id; if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true }; }
+      const { SOL_MINT, SOL_DECIMALS, getQuote, getSwapTransaction, deserializeTransaction, formatTokenAmount } = await import('../../trade-manager/jupiter-api.js');
+      const { keypair, publicKey, wallet } = await loadWallet(wid);
+      const decimals = await getTokenDecimals(token_mint);
+      // Cap requested amount to on-chain balance to avoid rounding-related failures
+      const { PublicKey } = await import('@solana/web3.js');
+      const { getAssociatedTokenAddress, getAccount } = await import('@solana/spl-token');
+      const mintPk = new PublicKey(token_mint);
+      const ata = await getAssociatedTokenAddress(mintPk, publicKey);
+      let account; try { account = await getAccount(conn, ata); } catch { account = null; }
+      const balanceRaw = account?.amount ?? 0n;
+      let requestedRaw = BigInt(Math.floor(Number(token_amount) * Math.pow(10, decimals)));
+      if (requestedRaw > balanceRaw) requestedRaw = balanceRaw;
+      if (requestedRaw <= 0n) return { content:[{ type:'text', text:'insufficient_token_balance' }], isError:true };
+      const outMint = String(output_mint || SOL_MINT);
+      const quote = await getQuote({ inputMint: token_mint, outputMint: outMint, amount: String(requestedRaw), slippageBps: Number(slippage_bps)||100 });
+      const microLamports = Number(priority_lamports) || await getAdaptivePriorityMicroLamports(10000, 0.9);
+      const swapResponse = await getSwapTransaction({ quoteResponse: quote, userPublicKey: publicKey, wrapAndUnwrapSol: true, priorityLamports: microLamports });
+      const transaction = deserializeTransaction(swapResponse.swapTransaction);
+      transaction.sign([keypair]);
+      const serialized = transaction.serialize();
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+      const sig = await conn.sendRawTransaction(serialized, { skipPreflight: false, maxRetries: 3 });
+      await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+      const solUi = quote?.outAmount ? formatTokenAmount(quote.outAmount, outMint === SOL_MINT ? SOL_DECIMALS : 6) : null;
+      return {
+        structuredContent: {
+          success: true,
+          tx_hash: sig,
+          wallet_id: wid,
+          wallet_address: wallet?.public_key || publicKey.toBase58(),
+          action: 'sell',
+          token_mint,
+          tokens_sold_ui: formatTokenAmount(String(requestedRaw), decimals),
+          sol_received_ui: solUi,
+          price_impact: quote?.priceImpactPct ?? null,
+          solscan_url: `https://solscan.io/tx/${sig}`
+        },
+        content: [{ type:'text', text: `tx=${sig}` }]
+      };
+    } catch (e) {
+      return { content: [{ type:'text', text: e?.message || 'sell_failed' }], isError: true };
+    }
   });
 
   server.registerTool('execute_sell_all', {
@@ -543,11 +758,61 @@ export function registerTradingTools(server) {
     outputSchema: {
       success: z.boolean(),
       tx_hash: z.string().nullable(),
+      wallet_id: z.string().optional(),
+      wallet_address: z.string().nullable().optional(),
+      action: z.string().optional(),
+      token_mint: z.string().optional(),
+      tokens_sold_ui: z.string().nullable().optional(),
+      sol_received_ui: z.string().nullable().optional(),
+      price_impact: z.any().optional(),
+      solscan_url: z.string().nullable().optional(),
       error: z.string().optional()
     }
   }, async ({ wallet_id, token_mint, slippage_bps, priority_lamports }, extra) => {
-    // Placeholder implementation
-    return { content: [{ type:'text', text: 'execute_sell_all_placeholder' }], isError: true };
+    try {
+      const conn = await getRpcConnection();
+      const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
+      let wid = wallet_id; if (!wid) { const r = resolveWalletForRequest(extra); wid = r.wallet_id; if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true }; }
+      const { PublicKey } = await import('@solana/web3.js');
+      const { getAssociatedTokenAddress, getAccount } = await import('@solana/spl-token');
+      const { SOL_MINT, SOL_DECIMALS, getQuote, getSwapTransaction, deserializeTransaction, formatTokenAmount } = await import('../../trade-manager/jupiter-api.js');
+      const { keypair, publicKey, wallet } = await loadWallet(wid);
+      const mintPk = new PublicKey(token_mint);
+      const ata = await getAssociatedTokenAddress(mintPk, publicKey);
+      const account = await getAccount(conn, ata);
+      const balanceRaw = account.amount; // BigInt
+      const decimals = await getTokenDecimals(token_mint);
+      if (balanceRaw <= 0n) {
+        return { structuredContent: { success: false, tx_hash: null, wallet_id: wid, wallet_address: wallet?.public_key || publicKey.toBase58(), action: 'sell_all', token_mint, tokens_sold_ui: '0', sol_received_ui: null, price_impact: null, solscan_url: null }, content: [{ type:'text', text: 'balance=0' }], isError: true };
+      }
+      const quote = await getQuote({ inputMint: token_mint, outputMint: SOL_MINT, amount: String(balanceRaw), slippageBps: Number(slippage_bps)||100 });
+      const microLamports = Number(priority_lamports) || await getAdaptivePriorityMicroLamports(10000, 0.9);
+      const swapResponse = await getSwapTransaction({ quoteResponse: quote, userPublicKey: publicKey, wrapAndUnwrapSol: true, priorityLamports: microLamports });
+      const transaction = deserializeTransaction(swapResponse.swapTransaction);
+      transaction.sign([keypair]);
+      const serialized = transaction.serialize();
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+      const sig = await conn.sendRawTransaction(serialized, { skipPreflight: false, maxRetries: 3 });
+      await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+      const solUi = quote?.outAmount ? formatTokenAmount(quote.outAmount, SOL_DECIMALS) : null;
+      return {
+        structuredContent: {
+          success: true,
+          tx_hash: sig,
+          wallet_id: wid,
+          wallet_address: wallet?.public_key || publicKey.toBase58(),
+          action: 'sell_all',
+          token_mint,
+          tokens_sold_ui: formatTokenAmount(balanceRaw, decimals),
+          sol_received_ui: solUi,
+          price_impact: quote?.priceImpactPct ?? null,
+          solscan_url: `https://solscan.io/tx/${sig}`
+        },
+        content: [{ type:'text', text: `tx=${sig}` }]
+      };
+    } catch (e) {
+      return { content: [{ type:'text', text: e?.message || 'sell_all_failed' }], isError: true };
+    }
   });
 
   server.registerTool('execute_sell_all_preview', {
@@ -559,42 +824,90 @@ export function registerTradingTools(server) {
       slippage_bps: z.number().int().optional(),
     },
     outputSchema: {
-      balance: z.number(),
-      expected_sol: z.number(),
-      price_impact: z.number()
+      preview: z.boolean(),
+      action: z.string(),
+      wallet_id: z.string().optional(),
+      token_mint: z.string(),
+      tokens_sold_ui: z.string().nullable().optional(),
+      expected_sol_raw: z.string().nullable().optional(),
+      expected_sol_ui: z.string().nullable().optional(),
+      price_impact: z.any().optional(),
     }
   }, async ({ wallet_id, token_mint, slippage_bps }, extra) => {
-    // Placeholder implementation
-    return { content: [{ type:'text', text: 'execute_sell_all_preview_placeholder' }], isError: true };
+    try {
+      const conn = await getRpcConnection();
+      const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
+      let wid = wallet_id; if (!wid) { const r = resolveWalletForRequest(extra); wid = r.wallet_id; if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true }; }
+      const { PublicKey } = await import('@solana/web3.js');
+      const { getAssociatedTokenAddress, getAccount } = await import('@solana/spl-token');
+      const { SOL_MINT, SOL_DECIMALS, getQuote, formatTokenAmount } = await import('../../trade-manager/jupiter-api.js');
+      const { publicKey } = await loadWallet(wid);
+      const mintPk = new PublicKey(token_mint);
+      const ata = await getAssociatedTokenAddress(mintPk, publicKey);
+      let account; try { account = await getAccount(conn, ata); } catch { account = null; }
+      const decimals = await getTokenDecimals(token_mint);
+      const balanceRaw = account?.amount ?? 0n;
+      if (balanceRaw <= 0n) {
+        return { structuredContent: { preview: true, action: 'sell_all', wallet_id: wid, token_mint, tokens_sold_ui: '0', expected_sol_raw: null, expected_sol_ui: null, price_impact: null }, content: [{ type:'text', text: 'balance=0' }] };
+      }
+      const quote = await getQuote({ inputMint: token_mint, outputMint: SOL_MINT, amount: String(balanceRaw), slippageBps: Number(slippage_bps)||100 });
+      const outRaw = quote?.outAmount || null;
+      const outUi = outRaw ? formatTokenAmount(outRaw, SOL_DECIMALS) : null;
+      return { structuredContent: { preview: true, action: 'sell_all', wallet_id: wid, token_mint, tokens_sold_ui: formatTokenAmount(balanceRaw, decimals), expected_sol_raw: outRaw, expected_sol_ui: outUi, price_impact: quote?.priceImpactPct ?? null }, content: [{ type:'text', text: outUi ? `~${outUi} SOL` : 'no_quote' }] };
+    } catch (e) {
+      return { content: [{ type:'text', text: e?.message || 'preview_failed' }], isError: true };
+    }
   });
 
   server.registerTool('list_managed_wallets', {
     title: 'List Managed Wallets',
     description: 'List managed wallets available for trading (IDs and public keys).',
     inputSchema: {
-      limit: z.number().int().positive().max(500).optional(),
-      offset: z.number().int().nonnegative().optional(),
       search: z.string().min(1).optional(),
       query: z.string().optional(),
       q: z.string().optional(),
-      include_admin: z.boolean().optional(),
+      limit: z.number().int().positive().max(500).optional(),
+      offset: z.number().int().min(0).optional(),
+      include_admin: z.boolean().optional()
     },
-    outputSchema: {
-      items: z.array(z.object({
-        id: z.string(),
-        public_key: z.string(),
-        name: z.string().nullable(),
-        is_admin: z.boolean().optional()
-      }))
-    }
-  }, async ({ limit, offset, search, query, q, include_admin }) => {
+    outputSchema: { wallets: z.array(z.object({ id: z.string(), public_key: z.string(), wallet_name: z.string().nullable(), user_id: z.any().nullable() })) }
+  }, async ({ search, query, q, limit, offset, include_admin }) => {
+    const searchTerm = search ?? query ?? q;
+    const take = Math.max(1, Math.min(500, Number(limit) || 100));
+    const skip = Math.max(0, Number(offset) || 0);
+    // First: query via Prisma directly
     try {
-      // This would typically query a database of managed wallets
-      // For now, returning a placeholder
-      const items = [];
-      return { structuredContent: { items }, content: [{ type:'text', text: 'No wallets configured' }] };
+      const { PrismaClient } = await import('@prisma/client');
+      const prisma = new PrismaClient();
+      const whereAnd = [ { NOT: { encrypted_private_key: '' } } ];
+      if (searchTerm && String(searchTerm).trim()) {
+        whereAnd.push({ OR: [
+          { label: { contains: String(searchTerm), mode: 'insensitive' } },
+          { public_key: { contains: String(searchTerm), mode: 'insensitive' } }
+        ]});
+      }
+      const rows = await prisma.managed_wallets.findMany({
+        where: { AND: whereAnd },
+        select: { id: true, public_key: true, label: true, ownerId: true, encrypted_private_key: true, owner: { select: { role: true } } },
+        orderBy: { id: 'asc' },
+        take, skip
+      });
+      const exposeAdmin = (include_admin != null) ? !!include_admin : (String(process.env.TOKEN_AI_EXPOSE_ADMIN_WALLETS || '0') === '1');
+      const wallets = rows.filter(w => {
+        const isAdmin = !!(w.owner && (w.owner.role === 'admin' || w.owner.role === 'superadmin'));
+        if (isAdmin && !exposeAdmin) return false;
+        return true;
+      }).map(w => ({ id: String(w.id), public_key: w.public_key, wallet_name: w.label, user_id: w.ownerId }));
+      return { structuredContent: { wallets }, content: [{ type:'text', text: JSON.stringify(wallets) }] };
     } catch (e) {
-      return { content: [{ type:'text', text: e?.message || 'list_wallets_failed' }], isError: true };
+      // Fallback: best-effort via wallet-utils helper
+      try {
+        const { listManagedWallets } = await import('../../trade-manager/wallet-utils.js');
+        const wallets = await listManagedWallets({ search: searchTerm, limit: take, offset: skip, includeAdmin: include_admin });
+        return { structuredContent: { wallets }, content: [{ type:'text', text: JSON.stringify(wallets) }] };
+      } catch (e2) {
+        return { content: [{ type:'text', text: e2?.message || e?.message || 'list_wallets_failed' }], isError: true };
+      }
     }
   });
 }

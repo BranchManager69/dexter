@@ -78,7 +78,7 @@ Token-AI implements two distinct tool systems:
 
 | Tool | Description |
 |------|-------------|
-| `list_wallet_token_balances` | List SPL token balances for a managed wallet |
+| `list_wallet_token_balances` | List wallet balances, including native SOL and SPL tokens |
 | `resolve_token` | Resolve token name/symbol to Solana mint addresses |
 | `smart_sell` | Attempts multiple outputs and slippages to execute sell |
 | `smart_buy` | Attempts multiple inputs and slippages to execute buy |

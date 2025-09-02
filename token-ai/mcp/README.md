@@ -213,8 +213,9 @@ ChatGPT canonical
 ### Trading Tools
 
 - `list_wallet_token_balances(wallet_id, min_ui?, limit?)`:
-  - Purpose: Enumerate SPL token balances for a managed wallet to plan sells.
+  - Purpose: Enumerate wallet balances (native SOL and SPL token accounts) to plan sells.
   - Output: `{ items: [{ mint, ata, decimals, amount_ui, amount_raw }] }` sorted by `amount_ui`.
+    - SOL appears with `mint=So1111…12` and `ata="native"`.
 
 - `smart_buy(wallet_id, token_mint, sol_amount? | out_amount_ui?, use_exact_out?, input_mints?, slippages_bps?, priority_lamports?, max_price_impact_pct?)`:
   - Purpose: Robust buy helper with slippage ramp and optional ExactOut.
