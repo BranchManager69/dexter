@@ -1086,7 +1086,7 @@ export function registerTradingTools(server) {
       include_admin: z.boolean().optional()
     },
     outputSchema: { wallets: z.array(z.object({ id: z.string(), public_key: z.string(), wallet_name: z.string().nullable(), user_id: z.any().nullable() })) }
-  }, async ({ search, query, q, limit, offset, include_admin }, extra) => {
+  }, async ({ search, query, q, limit, offset, include_admin, __issuer, __sub }, extra) => {
     const searchTerm = search ?? query ?? q;
     const take = Math.max(1, Math.min(500, Number(limit) || 100));
     const skip = Math.max(0, Number(offset) || 0);
@@ -1095,8 +1095,8 @@ export function registerTradingTools(server) {
       const { PrismaClient } = await import('@prisma/client');
       const prisma = new PrismaClient();
       const headers = headersFromExtra(extra);
-      const issuer = String(headers['x-user-issuer']||'');
-      const subject = String(headers['x-user-sub']||'');
+      const issuer = String(__issuer || headers['x-user-issuer']||'');
+      const subject = String(__sub || headers['x-user-sub']||'');
       const admin = (String(process.env.TOKEN_AI_EXPOSE_ADMIN_WALLETS||'0')==='1');
       let allowedIds = null;
       if (issuer && subject && !admin && !include_admin) {

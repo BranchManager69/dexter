@@ -223,17 +223,27 @@ function normalizeAcceptHeader(req){
   } catch {}
 }
 
-function injectIdentityIntoBody(body, sessionId){
+function buildIdentityForRequest(sessionId, req){
+  try {
+    if (sessionId && sessionIdentity.has(sessionId)) return sessionIdentity.get(sessionId);
+  } catch {}
+  try {
+    const issuer = req?.headers?.['x-user-issuer'] || effectiveBaseUrl(req);
+    const sub = req?.headers?.['x-user-sub'] || '';
+    const email = req?.headers?.['x-user-email'] || '';
+    return { issuer, sub, email };
+  } catch { return null; }
+}
+
+function injectIdentityIntoBody(body, identity){
   try {
     if (!body || typeof body !== 'object') return body;
-    if (!sessionId) return body;
-    const ident = sessionIdentity.get(sessionId);
-    if (!ident) return body;
+    if (!identity) return body;
     if (body.method === 'tools/call' && body.params && typeof body.params === 'object') {
       if (!body.params.arguments || typeof body.params.arguments !== 'object') body.params.arguments = {};
-      body.params.arguments.__issuer = String(ident.issuer||'');
-      body.params.arguments.__sub = String(ident.sub||'');
-      if (ident.email) body.params.arguments.__email = String(ident.email);
+      body.params.arguments.__issuer = String(identity.issuer||'');
+      body.params.arguments.__sub = String(identity.sub||'');
+      if (identity.email) body.params.arguments.__email = String(identity.email);
     }
   } catch {}
   return body;
@@ -850,7 +860,8 @@ const server = http.createServer(async (req, res) => {
         } catch {}
         {
           const body = await readBody(req);
-          const patched = injectIdentityIntoBody(body, sessionId);
+          const ident = buildIdentityForRequest(sessionId, req);
+          const patched = injectIdentityIntoBody(body, ident);
           await transport.handleRequest(req, res, patched);
         }
         return;
@@ -876,7 +887,12 @@ const server = http.createServer(async (req, res) => {
           if (prov) req.headers['x-user-issuer'] = prov.issuer || effectiveBaseUrl(req);
         }
       } catch {}
-      await transport.handleRequest(req, res, await readBody(req));
+      {
+        const body = await readBody(req);
+        const ident = buildIdentityForRequest(null, req);
+        const patched = injectIdentityIntoBody(body, ident);
+        await transport.handleRequest(req, res, patched);
+      }
       const sid = transport.sessionId;
       if (sid) {
         servers.set(sid, mcpServer);

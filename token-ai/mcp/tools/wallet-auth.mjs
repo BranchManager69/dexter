@@ -286,12 +286,14 @@ export function registerWalletAuthTools(server) {
       bearer_preview: z.string().nullable(),
       mapping_hit: z.boolean().optional(),
     }
-  }, async (_args, extra) => {
+  }, async (args, extra) => {
     const headers = headersFromExtra(extra);
     const session_id = String(headers['mcp-session-id'] || 'stdio');
-    const transport = headers['mcp-session-id'] ? 'http' : 'stdio';
-    const issuer = headers['x-user-issuer'] ? String(headers['x-user-issuer']) : null;
-    const subject = headers['x-user-sub'] ? String(headers['x-user-sub']) : null;
+    const injectedIssuer = args?.__issuer ? String(args.__issuer) : null;
+    const injectedSub = args?.__sub ? String(args.__sub) : null;
+    const issuer = injectedIssuer || (headers['x-user-issuer'] ? String(headers['x-user-issuer']) : null);
+    const subject = injectedSub || (headers['x-user-sub'] ? String(headers['x-user-sub']) : null);
+    const transport = issuer || subject || headers['mcp-session-id'] ? 'http' : 'stdio';
     const def = process.env.TOKEN_AI_DEFAULT_WALLET_ID || null;
     const bear = getBearerFromHeaders(headers);
     const bearPrev = bear ? `${bear.slice(0,4)}…${bear.slice(-4)}` : null;
