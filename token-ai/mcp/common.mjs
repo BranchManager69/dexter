@@ -70,11 +70,59 @@ export function buildMcpServer(){
   registerWebResearchTools(server);
   registerTradingTools(server);
 
-  // Resources (use new McpServer.resource API)
+  // Resources (use McpServer.resource API)
   // report://ai-token-analyses/{file}
   server.resource(
     'ai-token-analyses:file',
-    new ResourceTemplate('report://ai-token-analyses/{file}', 'Analysis report by filename', 'application/json'),
+    new ResourceTemplate('report://ai-token-analyses/{file}', {
+      // Make recent reports discoverable via resources/list
+      list: async () => {
+        let files = [];
+        try {
+          files = (fs.readdirSync(REPORTS_DIR) || [])
+            .filter((f) => f.endsWith('.json'))
+            .map((f) => ({
+              name: f,
+              mtime: (() => {
+                try {
+                  return fs.statSync(path.join(REPORTS_DIR, f)).mtimeMs || 0;
+                } catch {
+                  return 0;
+                }
+              })(),
+            }))
+            .sort((a, b) => b.mtime - a.mtime)
+            .slice(0, 50);
+        } catch {}
+        const resources = [];
+        for (const it of files) {
+          try {
+            // Best-effort metadata for nicer display
+            const raw = fs.readFileSync(path.join(REPORTS_DIR, it.name), 'utf8');
+            let j = null;
+            try { j = JSON.parse(raw); } catch {}
+            const mint = extractMintFromReport(j, it.name) || null;
+            const meta = extractMeta(j || {}) || {};
+            const symbol = meta.symbol || null;
+            const titleParts = [symbol ? symbol : null, mint ? `(${mint.slice(0,6)}…${mint.slice(-4)})` : null].filter(Boolean);
+            const title = titleParts.length ? titleParts.join(' ') : it.name;
+            const descParts = [];
+            if (meta.name) descParts.push(meta.name);
+            if (meta.fdv != null) descParts.push(`FDV ${meta.fdv}`);
+            if (meta.liquidity != null) descParts.push(`Liq ${meta.liquidity}`);
+            const description = descParts.length ? `AI analysis • ${descParts.join(' • ')}` : 'AI analysis report';
+            resources.push({
+              name: it.name,
+              title,
+              description,
+              uri: `report://ai-token-analyses/${it.name}`,
+              mimeType: 'application/json',
+            });
+          } catch {}
+        }
+        return { resources };
+      },
+    }),
     async (_uri, vars) => {
       const file = vars?.file;
       if (!/^[A-Za-z0-9._-]+\.json$/.test(String(file))) throw new Error('Invalid filename');
@@ -88,7 +136,32 @@ export function buildMcpServer(){
   // report://ai-token-analyses/by-mint/{mint}
   server.resource(
     'ai-token-analyses:by-mint',
-    new ResourceTemplate('report://ai-token-analyses/by-mint/{mint}', 'Analysis report by mint address', 'application/json'),
+    new ResourceTemplate('report://ai-token-analyses/by-mint/{mint}', {
+      // Optional: provide basic completion for {mint} via recent files
+      complete: {
+        mint: async (prefix) => {
+          const p = String(prefix || '').toLowerCase();
+          try {
+            const files = (fs.readdirSync(REPORTS_DIR) || [])
+              .filter((f) => f.endsWith('.json'))
+              .slice(0, 200);
+            const sugg = [];
+            for (const f of files) {
+              try {
+                const j = JSON.parse(fs.readFileSync(path.join(REPORTS_DIR, f), 'utf8'));
+                const m = String(extractMintFromReport(j, f) || '').toLowerCase();
+                if (m && (!p || m.includes(p))) sugg.push(m);
+                if (sugg.length >= 100) break;
+              } catch {}
+            }
+            // Return unique suggestions
+            return Array.from(new Set(sugg));
+          } catch {
+            return [];
+          }
+        },
+      },
+    }),
     async (_uri, vars) => {
       const mint = vars?.mint;
       // Find most recent report for this mint
@@ -121,7 +194,25 @@ export function buildMcpServer(){
   // research://deep-research/notes/{id}
   server.resource(
     'deep-research:note',
-    new ResourceTemplate('research://deep-research/notes/{id}', 'Deep research note by ID', 'application/json'),
+    new ResourceTemplate('research://deep-research/notes/{id}', {
+      list: async () => {
+        const notesDir = path.join(RESEARCH_DIR, 'notes');
+        let files = [];
+        try {
+          files = (fs.readdirSync(notesDir) || [])
+            .filter((f) => f.endsWith('.json'))
+            .slice(0, 100);
+        } catch {}
+        const resources = files.map((f) => ({
+          name: f.replace(/\.json$/, ''),
+          title: `Note ${f.replace(/\.json$/, '')}`,
+          description: 'Deep research note',
+          uri: `research://deep-research/notes/${f.replace(/\.json$/, '')}`,
+          mimeType: 'application/json',
+        }));
+        return { resources };
+      },
+    }),
     async (_uri, vars) => {
       const id = vars?.id;
       const safe = String(id||'').replace(/[^A-Za-z0-9_-]/g,'');
@@ -135,7 +226,28 @@ export function buildMcpServer(){
   // research://deep-research/{file}
   server.resource(
     'deep-research:file',
-    new ResourceTemplate('research://deep-research/{file}', 'Deep research report by filename', 'application/json'),
+    new ResourceTemplate('research://deep-research/{file}', {
+      list: async () => {
+        const repDir = path.join(RESEARCH_DIR, 'reports');
+        let files = [];
+        try {
+          files = (fs.readdirSync(repDir) || [])
+            .filter((f) => f.endsWith('.json'))
+            .map((f) => ({ name: f, mtime: (()=>{ try { return fs.statSync(path.join(repDir, f)).mtimeMs||0; } catch { return 0; } })() }))
+            .sort((a,b)=> b.mtime - a.mtime)
+            .slice(0, 50)
+            .map((it) => it.name);
+        } catch {}
+        const resources = files.map((f) => ({
+          name: f,
+          title: f,
+          description: 'Deep research report',
+          uri: `research://deep-research/${f}`,
+          mimeType: 'application/json',
+        }));
+        return { resources };
+      },
+    }),
     async (_uri, vars) => {
       const file = vars?.file;
       if (!/^[A-Za-z0-9._-]+\.json$/.test(String(file))) throw new Error('Invalid filename');

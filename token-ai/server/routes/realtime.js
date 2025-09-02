@@ -288,7 +288,7 @@ export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
         try { return { ok: r.ok, status: r.status, body: JSON.parse(txt) }; } catch { return { ok: r.ok, status: r.status, body: txt }; }
       }
       async function mcpCall(toolName, toolArgs){
-        const MCP_PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
+        const MCP_PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
         const TOKEN = process.env.TOKEN_AI_MCP_TOKEN || '';
         const XUSER = String((req.headers['x-user-token']||'')).trim();
         const initBody = JSON.stringify({ jsonrpc:'2.0', id: '1', method:'initialize', params:{ clientInfo:{ name:'voice-bridge', version:'0.1' }, protocolVersion:'2024-11-05', capabilities:{} } });

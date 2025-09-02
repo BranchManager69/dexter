@@ -56,6 +56,18 @@ Common commands:
 - `journalctl -u dexter-ui -f` (tail logs)
 - `sudo nginx -t && sudo systemctl reload nginx`
 
+### Auto-Restarts (systemd .path watchers)
+Enable automatic restarts when code or env files change (excludes `public/`).
+
+- Install and enable watchers:
+  - `sudo bash token-ai/scripts/install-systemd-watchers.sh`
+- What it watches:
+  - MCP: repo `.env`, `token-ai/.env`, `token-ai/mcp/`, `token-ai/mcp/tools/`, `token-ai/mcp/common.mjs`
+  - UI: repo `.env`, `token-ai/.env`, `token-ai/server.js`, `token-ai/server/`, `token-ai/core/`
+- Notes:
+  - Directory watches trigger on create/rename/delete (e.g., git pull/checkout). In‑place edits that don’t touch directory entries may not trigger.
+  - Static `public/` is served directly from disk and doesn’t need a restart; purge cache if needed.
+
 ## Environment
 - Authoritative env file: `~/websites/dexter/.env` (this repo)
 - Local backend env: `~/websites/dexter/token-ai/.env` is a real copy kept in sync with the root `.env`.

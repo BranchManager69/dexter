@@ -28,24 +28,123 @@ function handleTerminalMessage(e) {
   try {
     const msg = e.detail?.msg;
     if (!msg || msg.type !== 'DATA' || msg.topic !== 'terminal') return;
-    
     const { subtype, event, data } = msg;
-    
-    if (subtype === 'ai_session' && event === 'session:meta') {
-      const mint = data?.mint;
-      if (mint && !suppressedMints.has(mint)) {
-        const panel = getOrCreatePanel(mint);
-        if (panel && data) {
+
+    // Route runner lifecycle/logs to panels
+    if (subtype === 'runner') {
+      if (event === 'runner:started') {
+        try {
+          if (data?.mint) {
+            const p = getOrCreatePanel(data.mint);
+            if (p && data.pid) p.pid = data.pid;
+          }
+        } catch {}
+      }
+      if (event === 'runner:log') {
+        try {
+          const logMint = data?.mint;
+          if (logMint && !suppressedMints.has(logMint)) {
+            const p = getOrCreatePanel(logMint);
+            if (p) {
+              const stream = data?.stream || 'stdout';
+              const line = data?.line || '';
+              // Try to route [trace] JSON to step details
+              try {
+                const m = line.match(/^\[trace\]\s+(\{.*\})$/);
+                if (m) {
+                  const j = JSON.parse(m[1]);
+                  const step = String(j?.step || '');
+                  const status = String(j?.status || '');
+                  if (step) {
+                    if (status === 'start') p.addStepLog?.(step, `▶ start ${step}${j.url ? ` url=${j.url}` : ''}`);
+                    else if (status === 'end') { const ms = (typeof j.ms === 'number') ? j.ms : null; const ok = !!j.ok; p.addStepLog?.(step, `✓ end ${step}${ms != null ? ` (${ms}ms)` : ''} ok=${ok}`); }
+                    else if (status === 'skip') p.addStepLog?.(step, `⏭ skipped ${step}${j.reason ? ` (${j.reason})` : ''}`);
+                  }
+                }
+              } catch {}
+              const cls = stream === 'stderr' ? 't-red' : '';
+              p.log?.(`[${stream}] ${line}`, cls);
+            }
+          }
+        } catch {}
+      }
+      return; // handled
+    }
+
+    if (subtype === 'ai_session') {
+      const mint = data?.mint || null;
+      if (!mint) return;
+      if (!panels.has(mint) && suppressedMints.has(mint)) return;
+
+      const panel = getOrCreatePanel(mint);
+      if (!panel) return;
+
+      // Initial meta
+      if (event === 'session:meta') {
+        if (data) {
           if (data.pid) panel.pid = data.pid;
           if (data.name || data.symbol) panel.updateTokenMeta(data);
           if (data.started_at) panel.setStart(data.started_at);
           if (data.phase) panel.setPhase(data.phase);
         }
+        return;
       }
+
+      // Context/memory digest & token meta
+      if (event === 'agent:memory') { panel.setContext?.(data?.text || ''); return; }
+      if (event === 'token:meta') { panel.updateTokenMeta?.({ name: data?.name, symbol: data?.symbol, address: data?.address || mint }); return; }
+
+      // Session lifecycle
+      if (event === 'agent:session_start') {
+        try {
+          if (data?.started_at) panel.setStart(data.started_at);
+          if (panel.initSteps) { panel.initSteps(); panel.setStepState('bootstrap','active'); panel.setPhase('Init'); }
+          panel.log?.(`▶ session_start ${mint} model=${data?.model || ''}`, 't-grey');
+        } catch {}
+        return;
+      }
+      if (event === 'agent:status') {
+        try {
+          const t = data?.text || '';
+          if (t.includes('llm_round1')) { panel.setPhase('Socials'); panel.setStepState?.('bootstrap','done'); panel.setStepState?.('socials','active'); }
+          if (t.includes('finalize_round_start')) { panel.setPhase('Synthesis'); panel.setStepState?.('synthesis','active'); }
+          if (t.includes('finalize_stream_completed')) { panel.setPhase('Finalizing'); panel.setStepState?.('synthesis','done'); panel.setStepState?.('finalize','active'); }
+          panel.log?.('… ' + t, 't-grey');
+        } catch {}
+        return;
+      }
+      if (event === 'agent:tool_call') { panel.log?.('↪ tool_call ' + (data?.name || ''), 't-yellow'); if ((data?.name === 'analyze_token_ohlcv' || data?.name === 'analyze_token_ohlcv_range')) panel.setStepState?.('market','active'); return; }
+      if (event === 'agent:tool_result') { panel.log?.('✔ tool_result ' + (data?.name || '') + ' ' + (data?.elapsed_ms || 0) + 'ms', 't-green'); if (data?.name === 'socials_orchestrate') panel.setStepState?.('socials','done', data?.elapsed_ms || 0); if ((data?.name === 'analyze_token_ohlcv' || data?.name === 'analyze_token_ohlcv_range')) panel.setStepState?.('market','done', data?.elapsed_ms || 0); return; }
+      if (event === 'agent:partial_output') { const t = (data && data.text) ? String(data.text) : ''; if (t) panel.appendNarrative?.(t); return; }
+      if (event === 'agent:error') { const t = (data && data.text) ? String(data.text) : 'error'; panel.log?.(t, 't-red'); return; }
+      if (event === 'agent:final_json') {
+        try {
+          const a = data?.data || {};
+          if (a?.metadata?.market) panel.updateMarket?.(a.metadata.market);
+          panel.updateScores?.(a);
+          try { panel.renderTimeline?.(a); } catch {}
+          try { panel.renderFinalReport?.(a, data?.file || null); } catch {}
+          try { const u = new URL(window.location.href); const dbg = u.searchParams.get('debug')==='1'; if (dbg && data?.file) panel.log?.('■ final_json saved ' + data.file, ''); } catch {}
+        } catch {}
+        return;
+      }
+      if (event && String(event).startsWith('process:')) {
+        const e2 = String(event).split(':')[1];
+        if (e2 === 'step_start') { const s = data?.step; if (s) { panel.setStepState?.(s,'active'); panel.addStepLog?.(s, `▶ start ${s}`); } return; }
+        if (e2 === 'step_end') {
+          const s = data?.step; if (!s) return;
+          if (data && data.skipped) { panel.setStepState?.(s,'skipped',0); panel.addStepLog?.(s, `⏭ skipped ${s}`); }
+          else { panel.setStepState?.(s,'done', data?.elapsed_ms || 0, { ok: (data?.ok !== false) }); panel.addStepLog?.(s, `✓ end ${s}${data?.elapsed_ms!=null?` (${data.elapsed_ms}ms)`:''}${data?.ok===false?' failed':''}`); }
+          return;
+        }
+        if (e2 === 'status') { if (data?.text) panel.appendSignal?.(data.text, 'status'); return; }
+        if (e2 === 'rationale') { if (data?.text) panel.appendSignal?.(data.text, data?.kind || 'why'); return; }
+        if (e2 === 'signal') { if (data?.label) panel.appendSignal?.(`${data.label}: ${data.value}`, 'signal'); return; }
+        if (e2 === 'source') { if (data?.url) panel.appendSourceLink?.(String(data.url), data?.title || '', data?.domain || ''); return; }
+      }
+      if (event && String(event).startsWith('metrics:')) { if (data) panel.updateMarket?.({ fdv:data.fdv, liquidity:data.liquidity, volume24h:data.volume24h }); return; }
+      if (event === 'agent:session_end') { panel.setPhase?.('Idle'); panel.log?.('■ session_end ok=' + (data?.ok?'true':'false'), data?.ok ? 't-green' : 't-red'); panel.finish?.(); return; }
     }
-    
-    // Handle other panel updates here
-    // ... (similar to the original handleMessage logic)
     
   } catch {}
 }
@@ -299,6 +398,29 @@ class Panel {
           }
         });
       }
+    } catch {}
+  }
+
+  // Minimal terminal logger
+  log(text, cls) {
+    try {
+      if (!this.term) return;
+      const line = document.createElement('div');
+      line.className = 'line' + (cls ? (' ' + cls) : '');
+      line.textContent = String(text || '');
+      this.term.appendChild(line);
+      this.term.scrollTop = this.term.scrollHeight;
+    } catch {}
+  }
+
+  // Minimal narrative appender
+  appendNarrative(chunk) {
+    try {
+      if (!chunk) return;
+      if (!this.narr) return;
+      if (!this.narrLineEl) { this.narrLineEl = document.createElement('div'); this.narr.appendChild(this.narrLineEl); }
+      this.narrLineEl.textContent = (this.narrLineEl.textContent || '') + String(chunk);
+      this.narr.scrollTop = this.narr.scrollHeight;
     } catch {}
   }
 
@@ -759,6 +881,14 @@ class Panel {
       }
       this.active = false;
       this.finishedAt = Date.now();
+    } catch {}
+  }
+
+  // Mark finished (compat with pre-refactor)
+  finish() {
+    try {
+      this.setPhase?.('Idle');
+      this.collapse();
     } catch {}
   }
 }

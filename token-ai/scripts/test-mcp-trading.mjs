@@ -60,6 +60,7 @@ async function call(client, name, args={}){
 async function main(){
   const tokenQuery = process.argv[2] || 'JUP'; // default symbol to test
   const solSpend = Number(process.env.MCP_TRADE_TEST_SOL || '0.001');
+  const T2T_ONLY = String(process.env.T2T_ONLY || '0') === '1';
 
   const transport = new StdioClientTransport({ command: 'node', args: [path.join(ROOT, 'mcp', 'server.mjs')], cwd: ROOT, stderr: 'pipe', env: loadParentEnv() });
   const client = new Client({ name: 'mcp-trading-test', version: '0.1.0' }, { capabilities: { tools:{}, resources:{}, prompts:{}, logging:{} } });
@@ -86,7 +87,7 @@ async function main(){
     console.log('token:', token.symbol, token.address, 'liq=$'+(token.liquidity_usd||0));
     // If SOL is low, try to free up by selling a small portion of the largest token
     const MIN_BUFFER = 3_000_000; // ~0.003 SOL
-    if (lamports != null && lamports < MIN_BUFFER) {
+    if (!T2T_ONLY && lamports != null && lamports < MIN_BUFFER) {
       console.log('Attempting to free SOL by selling a small token portion…');
       const { SOL_MINT } = await import('../trade-manager/jupiter-api.js');
       const balances = await call(client, 'list_wallet_token_balances', { wallet_id: wallet.wallet_id, min_ui: 0.000001, limit: 10 });
@@ -128,30 +129,35 @@ async function main(){
       }
     }
 
-    const prevBuy = await call(client, 'execute_buy_preview', { token_mint: token.address, sol_amount: solSpend, slippage_bps: 100 });
-    console.log('preview_buy:', prevBuy);
+    // If SOL still below buffer after any freeing, skip SOL round-trip
+    let lamportsNow = lamports;
+    try {
+      const balsNow = await call(client, 'list_wallet_token_balances', { wallet_id: wallet.wallet_id, min_ui: 0, limit: 50 });
+      const solNow = (balsNow.items||[]).find(i => i.ata === 'native');
+      if (solNow) lamportsNow = Number(solNow.amount_raw || '0');
+    } catch {}
 
-    const buy = await call(client, 'execute_buy', { token_mint: token.address, sol_amount: solSpend, slippage_bps: 100 });
-    console.log('buy:', buy);
-
-    // Small delay to ensure balance reflects
-    await sleep(1500);
-
-    const tokensBoughtUi = Number(buy.tokens_bought_ui || '0');
-    // Sell a conservative 50% to avoid rounding/balance mismatches
-    const sellAmountUi = Math.max(0, Number((tokensBoughtUi * 0.5).toFixed(6)));
-    if (sellAmountUi <= 0) throw new Error('No tokens bought to sell back');
-
-    const prevSell = await call(client, 'execute_sell_preview', { token_mint: token.address, token_amount: sellAmountUi, slippage_bps: 200 });
-    console.log('preview_sell:', prevSell);
-
-    const sell = await call(client, 'execute_sell', { token_mint: token.address, token_amount: sellAmountUi, slippage_bps: 200 });
-    console.log('sell:', sell);
-
-    console.log('SUCCESS: round-trip buy/sell complete');
+    if (!T2T_ONLY && lamportsNow >= MIN_BUFFER) {
+      const prevBuy = await call(client, 'execute_buy_preview', { token_mint: token.address, sol_amount: solSpend, slippage_bps: 100 });
+      console.log('preview_buy:', prevBuy);
+      const buy = await call(client, 'execute_buy', { token_mint: token.address, sol_amount: solSpend, slippage_bps: 100 });
+      console.log('buy:', buy);
+      // Small delay to ensure balance reflects
+      await sleep(1500);
+      const tokensBoughtUi = Number(buy.tokens_bought_ui || '0');
+      const sellAmountUi = Math.max(0, Number((tokensBoughtUi * 0.5).toFixed(6)));
+      if (sellAmountUi <= 0) throw new Error('No tokens bought to sell back');
+      const prevSell = await call(client, 'execute_sell_preview', { token_mint: token.address, token_amount: sellAmountUi, slippage_bps: 200 });
+      console.log('preview_sell:', prevSell);
+      const sell = await call(client, 'execute_sell', { token_mint: token.address, token_amount: sellAmountUi, slippage_bps: 200 });
+      console.log('sell:', sell);
+      console.log('SUCCESS: round-trip buy/sell complete');
+    } else if (!T2T_ONLY) {
+      console.log('Skipping SOL round-trip due to low SOL balance after freeing attempts.');
+    }
 
     // Validate sell_all on a remaining SPL token (exclude SOL and the test token)
-    try {
+    if (!T2T_ONLY) try {
       const { SOL_MINT } = await import('../trade-manager/jupiter-api.js');
       const bals2 = await call(client, 'list_wallet_token_balances', { wallet_id: wallet.wallet_id, min_ui: 0.000001, limit: 20 });
       const cand = (bals2.items||[]).find(i => i.mint !== SOL_MINT && i.mint !== token.address && i.amount_ui > 0.001);
@@ -165,6 +171,47 @@ async function main(){
       }
     } catch (e) {
       console.log('sell_all test skipped:', e.message || String(e));
+    }
+
+    // 3) Token-to-token trade: CLANKER → JUP, then JUP → CLANKER
+    try {
+      console.log('--- Token-to-token trade: CLANKER ↔ JUP ---');
+      // Resolve CLANKER and JUP mints
+      const clRes = await call(client, 'resolve_token', { query: 'CLANKER', limit: 5 });
+      const clMints = new Set((clRes.results||[]).map(r => r.address));
+      const jupMint = 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN';
+
+      // Find CLANKER in wallet balances
+      const bals = await call(client, 'list_wallet_token_balances', { wallet_id: wallet.wallet_id, min_ui: 0.000001, limit: 50 });
+      const clanker = (bals.items||[]).find(i => clMints.has(i.mint) && i.amount_ui > 0.00001);
+      if (!clanker) {
+        console.log('CLANKER not found in wallet; skipping token-to-token trade.');
+      } else {
+        // Trade a safe fraction CLANKER → JUP (exact-in via sell path with outputs=[JUP])
+        const sellAmt = Number(Math.max(0.0001, Math.min(clanker.amount_ui * 0.15, clanker.amount_ui * 0.5)).toFixed(6));
+        const pv = await call(client, 'execute_sell_preview', { token_mint: clanker.mint, token_amount: sellAmt, slippage_bps: 200, output_mint: jupMint });
+        console.log('preview CLANKER→JUP:', pv);
+        const t1 = await client.callTool({ name: 'trade', arguments: { action: 'sell', wallet_id: wallet.wallet_id, token_mint: clanker.mint, token_amount: sellAmt, outputs: [jupMint], slippages_bps: [200,300] } });
+        if (t1.isError) throw new Error('trade sell CLANKER→JUP failed: ' + (t1.content?.[0]?.text || 'tool_error'));
+        console.log('trade CLANKER→JUP:', t1.structuredContent || t1);
+        await sleep(1500);
+
+        // Trade back JUP → CLANKER using some of the JUP we just acquired
+        const bals2 = await call(client, 'list_wallet_token_balances', { wallet_id: wallet.wallet_id, min_ui: 0.000001, limit: 50 });
+        const jupBal = (bals2.items||[]).find(i => i.mint === jupMint && i.amount_ui > 0.00001);
+        if (!jupBal) {
+          console.log('No JUP balance to trade back; skipping reverse trade.');
+        } else {
+          const jupSell = Number(Math.max(0.00005, jupBal.amount_ui * 0.25).toFixed(6));
+          const pv2 = await call(client, 'execute_sell_preview', { token_mint: jupMint, token_amount: jupSell, slippage_bps: 200, output_mint: clanker.mint });
+          console.log('preview JUP→CLANKER:', pv2);
+          const t2 = await client.callTool({ name: 'trade', arguments: { action: 'sell', wallet_id: wallet.wallet_id, token_mint: jupMint, token_amount: jupSell, outputs: [clanker.mint], slippages_bps: [200,300] } });
+          if (t2.isError) throw new Error('trade sell JUP→CLANKER failed: ' + (t2.content?.[0]?.text || 'tool_error'));
+          console.log('trade JUP→CLANKER:', t2.structuredContent || t2);
+        }
+      }
+    } catch (e) {
+      console.log('token-to-token trade skipped:', e.message || String(e));
     }
   } finally {
     await client.close(); await transport.close();
