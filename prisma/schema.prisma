@@ -1044,9 +1044,28 @@ model managed_wallets {
   memo                  String?
   owner                 users?   @relation("ManagedWalletOwner", fields: [ownerId], references: [id])
   ai_trade_executions   ai_trade_executions[]
+  oauth_links           oauth_user_wallets[]
 
   @@index([ownerId])
   @@map("managed_wallets")
+}
+
+/// OAuth user ↔ wallet mapping for MCP HTTP sessions
+model oauth_user_wallets {
+  id             String   @id @default(uuid())
+  provider       String   @db.VarChar(255)
+  subject        String   @db.VarChar(255)
+  email          String?  @db.VarChar(255)
+  wallet_id      String
+  default_wallet Boolean  @default(false)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @updatedAt @db.Timestamptz(6)
+
+  wallet         managed_wallets @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
+
+  @@index([provider, subject])
+  @@unique([provider, subject, wallet_id])
+  @@map("oauth_user_wallets")
 }
 
 /// AI/Voice agent user table (separate from DegenDuel users)

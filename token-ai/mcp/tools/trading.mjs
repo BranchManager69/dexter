@@ -36,6 +36,27 @@ async function getAdaptivePriorityMicroLamports(base = 10000, percentile = 0.9) 
   }
 }
 
+async function resolveWalletIdOrNull(explicitWalletId, extra){
+  if (explicitWalletId) return String(explicitWalletId);
+  const r = resolveWalletForRequest(extra);
+  if (r?.wallet_id) return String(r.wallet_id);
+  try {
+    const headers = extra?.requestInfo?.headers || {};
+    const issuer = String(headers['x-user-issuer'] || '').trim();
+    const subject = String(headers['x-user-sub'] || '').trim();
+    if (issuer && subject) {
+      const { PrismaClient } = await import('@prisma/client');
+      const prisma = new PrismaClient();
+      const map = await prisma.oauth_user_wallets.findFirst({ where: { provider: issuer, subject, default_wallet: true } });
+      if (map?.wallet_id) return String(map.wallet_id);
+      const any = await prisma.oauth_user_wallets.findFirst({ where: { provider: issuer, subject }, orderBy: { created_at: 'asc' } });
+      if (any?.wallet_id) return String(any.wallet_id);
+    }
+  } catch {}
+  const envDefault = process.env.TOKEN_AI_DEFAULT_WALLET_ID || '';
+  return envDefault ? String(envDefault) : null;
+}
+
 export function registerTradingTools(server) {
   // Utility: list SPL token balances for a wallet (parsed)
   // Purpose: Let MCP clients discover what tokens a wallet can sell
@@ -434,7 +455,7 @@ export function registerTradingTools(server) {
     try {
       const conn = await getRpcConnection();
       const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
-      let wid = wallet_id; if (!wid) { const r = resolveWalletForRequest(extra); wid = r.wallet_id; if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true }; }
+      let wid = await resolveWalletIdOrNull(wallet_id, extra); if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true };
       const { publicKey } = await loadWallet(wid);
       const { PublicKey } = await import('@solana/web3.js');
       const { getAssociatedTokenAddress, getAccount } = await import('@solana/spl-token');
@@ -521,7 +542,7 @@ export function registerTradingTools(server) {
     try {
       const conn = await getRpcConnection();
       const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
-      let wid = wallet_id; if (!wid) { const r = resolveWalletForRequest(extra); wid = r.wallet_id; if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true }; }
+      let wid = await resolveWalletIdOrNull(wallet_id, extra); if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true };
       const { keypair, publicKey } = await loadWallet(wid);
       const { SOL_MINT, SOL_DECIMALS, getQuote, getSwapTransaction, deserializeTransaction, formatTokenAmount } = await import('../../trade-manager/jupiter-api.js');
 
@@ -800,7 +821,7 @@ export function registerTradingTools(server) {
       const conn = await getRpcConnection();
       const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
       const { SOL_MINT, SOL_DECIMALS, getQuote, getSwapTransaction, deserializeTransaction, formatTokenAmount } = await import('../../trade-manager/jupiter-api.js');
-      let wid = wallet_id; if (!wid) { const r = resolveWalletForRequest(extra); wid = r.wallet_id; if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true }; }
+      let wid = await resolveWalletIdOrNull(wallet_id, extra); if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true };
       const { keypair, publicKey, wallet } = await loadWallet(wid);
       // Compute desired spend and ensure we have enough SOL to cover spend + fees/ATA rents (WSOL + output if needed)
       let lamports = BigInt(Math.floor(Number(sol_amount) * Math.pow(10, SOL_DECIMALS)));
@@ -889,7 +910,7 @@ export function registerTradingTools(server) {
     try {
       const conn = await getRpcConnection();
       const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
-      let wid = wallet_id; if (!wid) { const r = resolveWalletForRequest(extra); wid = r.wallet_id; if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true }; }
+      let wid = await resolveWalletIdOrNull(wallet_id, extra); if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true };
       const { SOL_MINT, SOL_DECIMALS, getQuote, getSwapTransaction, deserializeTransaction, formatTokenAmount } = await import('../../trade-manager/jupiter-api.js');
       const { keypair, publicKey, wallet } = await loadWallet(wid);
       const decimals = await getTokenDecimals(token_mint);
@@ -960,7 +981,7 @@ export function registerTradingTools(server) {
     try {
       const conn = await getRpcConnection();
       const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
-      let wid = wallet_id; if (!wid) { const r = resolveWalletForRequest(extra); wid = r.wallet_id; if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true }; }
+      let wid = await resolveWalletIdOrNull(wallet_id, extra); if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true };
       const { PublicKey } = await import('@solana/web3.js');
       const { getAssociatedTokenAddress, getAccount } = await import('@solana/spl-token');
       const { SOL_MINT, SOL_DECIMALS, getQuote, getSwapTransaction, deserializeTransaction, formatTokenAmount } = await import('../../trade-manager/jupiter-api.js');
@@ -1025,7 +1046,7 @@ export function registerTradingTools(server) {
     try {
       const conn = await getRpcConnection();
       const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
-      let wid = wallet_id; if (!wid) { const r = resolveWalletForRequest(extra); wid = r.wallet_id; if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true }; }
+      let wid = await resolveWalletIdOrNull(wallet_id, extra); if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true };
       const { PublicKey } = await import('@solana/web3.js');
       const { getAssociatedTokenAddress, getAccount } = await import('@solana/spl-token');
       const { SOL_MINT, SOL_DECIMALS, getQuote, formatTokenAmount } = await import('../../trade-manager/jupiter-api.js');
@@ -1059,7 +1080,7 @@ export function registerTradingTools(server) {
       include_admin: z.boolean().optional()
     },
     outputSchema: { wallets: z.array(z.object({ id: z.string(), public_key: z.string(), wallet_name: z.string().nullable(), user_id: z.any().nullable() })) }
-  }, async ({ search, query, q, limit, offset, include_admin }) => {
+  }, async ({ search, query, q, limit, offset, include_admin }, extra) => {
     const searchTerm = search ?? query ?? q;
     const take = Math.max(1, Math.min(500, Number(limit) || 100));
     const skip = Math.max(0, Number(offset) || 0);
@@ -1067,6 +1088,15 @@ export function registerTradingTools(server) {
     try {
       const { PrismaClient } = await import('@prisma/client');
       const prisma = new PrismaClient();
+      const headers = extra?.requestInfo?.headers || {};
+      const issuer = String(headers['x-user-issuer']||'');
+      const subject = String(headers['x-user-sub']||'');
+      const admin = (String(process.env.TOKEN_AI_EXPOSE_ADMIN_WALLETS||'0')==='1');
+      let allowedIds = null;
+      if (issuer && subject && !admin && !include_admin) {
+        const links = await prisma.oauth_user_wallets.findMany({ where: { provider: issuer, subject } });
+        allowedIds = new Set(links.map(l=> String(l.wallet_id)));
+      }
       const whereAnd = [ { NOT: { encrypted_private_key: '' } } ];
       if (searchTerm && String(searchTerm).trim()) {
         whereAnd.push({ OR: [
@@ -1084,6 +1114,7 @@ export function registerTradingTools(server) {
       const wallets = rows.filter(w => {
         const isAdmin = !!(w.owner && (w.owner.role === 'admin' || w.owner.role === 'superadmin'));
         if (isAdmin && !exposeAdmin) return false;
+        if (allowedIds && allowedIds.size>0 && !allowedIds.has(String(w.id))) return false;
         return true;
       }).map(w => ({ id: String(w.id), public_key: w.public_key, wallet_name: w.label, user_id: w.ownerId }));
       return { structuredContent: { wallets }, content: [{ type:'text', text: JSON.stringify(wallets) }] };

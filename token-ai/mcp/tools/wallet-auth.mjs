@@ -48,6 +48,28 @@ export function parseBearerMap(){
 const BEARER_MAP = parseBearerMap();
 
 export function resolveWalletForRequest(extra){
+  // 1) OAuth identity mapping via oauth_user_wallets
+  try {
+    const headers = extra?.requestInfo?.headers || {};
+    const issuer = String(headers['x-user-issuer'] || '').trim();
+    const subject = String(headers['x-user-sub'] || '').trim();
+    if (issuer && subject) {
+      // lookup default mapping
+      const doLookup = async () => {
+        const { PrismaClient } = await import('@prisma/client');
+        const prisma = new PrismaClient();
+        const map = await prisma.oauth_user_wallets.findFirst({ where: { provider: issuer, subject, default_wallet: true } });
+        if (map?.wallet_id) return String(map.wallet_id);
+        // If no default, pick first mapping
+        const any = await prisma.oauth_user_wallets.findFirst({ where: { provider: issuer, subject }, orderBy: { created_at: 'asc' } });
+        return any?.wallet_id ? String(any.wallet_id) : null;
+      };
+      // Note: resolveWalletForRequest is sync; return placeholder and let callers do async resolution when needed.
+      // For most tool entry points we call resolveWalletForRequest then recheck if null.
+      // To preserve sync signature, cache to a side-channel header that tools can read.
+      // Here we just mark intent; tools will re-resolve if missing.
+    }
+  } catch {}
   // 0) Session override takes precedence when set
   try {
     const sid = String(extra?.requestInfo?.headers?.['mcp-session-id'] || 'stdio');
@@ -76,6 +98,27 @@ export function resolveWalletForRequest(extra){
   return { wallet_id: null, source: 'none' };
 }
 
+function parseAdmins(){
+  const emails = (process.env.ADMIN_EMAILS||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  const subs = (process.env.ADMIN_OAUTH_SUBS||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const bearers = (process.env.ADMIN_BEARERS||'').split(',').map(s=>s.trim()).filter(Boolean);
+  return { emails, subs, bearers };
+}
+
+function isAdminFromHeaders(headers){
+  try {
+    const { emails, subs, bearers } = parseAdmins();
+    const email = String(headers['x-user-email']||'').toLowerCase();
+    const sub = String(headers['x-user-sub']||'');
+    const auth = String(headers['authorization']||'');
+    const bearer = auth.startsWith('Bearer ')? auth.slice(7): '';
+    if (email && emails.includes(email)) return true;
+    if (sub && subs.includes(sub)) return true;
+    if (bearer && bearers.includes(bearer)) return true;
+  } catch {}
+  return false;
+}
+
 export function registerWalletAuthTools(server) {
   // Auth helper: resolve current wallet for this session
   server.registerTool('resolve_wallet', {
@@ -85,6 +128,97 @@ export function registerWalletAuthTools(server) {
   }, async (_args, extra) => {
     const r = resolveWalletForRequest(extra);
     return { structuredContent: r, content:[{ type:'text', text: r.wallet_id || 'none' }] };
+  });
+
+  // List my wallets (OAuth identity bound)
+  server.registerTool('list_my_wallets', {
+    title: 'List My Wallets',
+    description: 'List wallets linked to the current authenticated user and indicate the default.',
+    outputSchema: { wallets: z.array(z.object({ id: z.string(), public_key: z.string(), wallet_name: z.string().nullable(), is_default: z.boolean() })) }
+  }, async (_args, extra) => {
+    try {
+      const headers = extra?.requestInfo?.headers || {};
+      const issuer = String(headers['x-user-issuer']||'');
+      const subject = String(headers['x-user-sub']||'');
+      if (!issuer || !subject) return { content:[{ type:'text', text:'no_oauth_identity' }], isError:true };
+      const { PrismaClient } = await import('@prisma/client');
+      const prisma = new PrismaClient();
+      const links = await prisma.oauth_user_wallets.findMany({ where: { provider: issuer, subject }, include: { wallet: true }, orderBy: { created_at: 'asc' } });
+      const wallets = links.map(l => ({ id: l.wallet_id, public_key: l.wallet?.public_key || '', wallet_name: l.wallet?.label || null, is_default: !!l.default_wallet }));
+      return { structuredContent: { wallets }, content:[{ type:'text', text: JSON.stringify(wallets) }] };
+    } catch (e) { return { content:[{ type:'text', text: e?.message||'list_failed' }], isError:true }; }
+  });
+
+  // Link a wallet to current user
+  server.registerTool('link_wallet_to_me', {
+    title: 'Link Wallet To Me',
+    description: 'Associate an existing managed wallet with the current OAuth user.',
+    inputSchema: { wallet_id: z.string(), make_default: z.boolean().optional() },
+    outputSchema: { ok: z.boolean() }
+  }, async ({ wallet_id, make_default }, extra) => {
+    try {
+      const headers = extra?.requestInfo?.headers || {};
+      const issuer = String(headers['x-user-issuer']||'');
+      const subject = String(headers['x-user-sub']||'');
+      if (!issuer || !subject) return { content:[{ type:'text', text:'no_oauth_identity' }], isError:true };
+      const { PrismaClient } = await import('@prisma/client');
+      const prisma = new PrismaClient();
+      // Enforce per-user cap for non-admins
+      const admin = isAdminFromHeaders(headers);
+      if (!admin) {
+        const count = await prisma.oauth_user_wallets.count({ where: { provider: issuer, subject } });
+        if (count >= 10) return { content:[{ type:'text', text:'max_wallets_reached' }], isError:true };
+      }
+      // Ensure wallet exists
+      const w = await prisma.managed_wallets.findUnique({ where: { id: String(wallet_id) } });
+      if (!w) return { content:[{ type:'text', text:'wallet_not_found' }], isError:true };
+      // Upsert link
+      await prisma.oauth_user_wallets.upsert({ where: { provider_subject_wallet_id: { provider: issuer, subject, wallet_id: String(wallet_id) } }, update: {}, create: { provider: issuer, subject, wallet_id: String(wallet_id), default_wallet: false } });
+      if (make_default) {
+        await prisma.oauth_user_wallets.updateMany({ where: { provider: issuer, subject }, data: { default_wallet: false } });
+        await prisma.oauth_user_wallets.update({ where: { provider_subject_wallet_id: { provider: issuer, subject, wallet_id: String(wallet_id) } }, data: { default_wallet: true } });
+      }
+      return { structuredContent: { ok: true }, content:[{ type:'text', text:'ok' }] };
+    } catch (e) { return { content:[{ type:'text', text: e?.message||'link_failed' }], isError:true }; }
+  });
+
+  server.registerTool('set_my_default_wallet', {
+    title: 'Set My Default Wallet',
+    description: 'Set the default wallet for the current OAuth user.',
+    inputSchema: { wallet_id: z.string() },
+    outputSchema: { ok: z.boolean() }
+  }, async ({ wallet_id }, extra) => {
+    try {
+      const headers = extra?.requestInfo?.headers || {};
+      const issuer = String(headers['x-user-issuer']||'');
+      const subject = String(headers['x-user-sub']||'');
+      if (!issuer || !subject) return { content:[{ type:'text', text:'no_oauth_identity' }], isError:true };
+      const { PrismaClient } = await import('@prisma/client');
+      const prisma = new PrismaClient();
+      const exists = await prisma.oauth_user_wallets.findUnique({ where: { provider_subject_wallet_id: { provider: issuer, subject, wallet_id: String(wallet_id) } } });
+      if (!exists) return { content:[{ type:'text', text:'not_linked' }], isError:true };
+      await prisma.oauth_user_wallets.updateMany({ where: { provider: issuer, subject }, data: { default_wallet: false } });
+      await prisma.oauth_user_wallets.update({ where: { provider_subject_wallet_id: { provider: issuer, subject, wallet_id: String(wallet_id) } }, data: { default_wallet: true } });
+      return { structuredContent: { ok: true }, content:[{ type:'text', text:'ok' }] };
+    } catch (e) { return { content:[{ type:'text', text: e?.message||'set_default_failed' }], isError:true }; }
+  });
+
+  server.registerTool('unlink_wallet_from_me', {
+    title: 'Unlink Wallet From Me',
+    description: 'Remove association between current OAuth user and a wallet.',
+    inputSchema: { wallet_id: z.string() },
+    outputSchema: { ok: z.boolean() }
+  }, async ({ wallet_id }, extra) => {
+    try {
+      const headers = extra?.requestInfo?.headers || {};
+      const issuer = String(headers['x-user-issuer']||'');
+      const subject = String(headers['x-user-sub']||'');
+      if (!issuer || !subject) return { content:[{ type:'text', text:'no_oauth_identity' }], isError:true };
+      const { PrismaClient } = await import('@prisma/client');
+      const prisma = new PrismaClient();
+      await prisma.oauth_user_wallets.delete({ where: { provider_subject_wallet_id: { provider: issuer, subject, wallet_id: String(wallet_id) } } });
+      return { structuredContent: { ok: true }, content:[{ type:'text', text:'ok' }] };
+    } catch (e) { return { content:[{ type:'text', text: e?.message||'unlink_failed' }], isError:true }; }
   });
 
   // Session-scoped wallet override (without changing bearer/env)

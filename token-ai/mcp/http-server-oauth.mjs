@@ -750,6 +750,12 @@ const server = http.createServer(async (req, res) => {
           const entry = await validateTokenAndClaims(token);
           if (!entry) return unauthorized(res, 'Invalid token or user not authorized', req);
           req.oauthUser = entry.user;
+          try {
+            const prov = getProviderConfig(req);
+            if (prov) req.headers['x-user-issuer'] = prov.issuer || effectiveBaseUrl(req);
+            if (entry?.claims?.sub) req.headers['x-user-sub'] = String(entry.claims.sub);
+            if (entry?.claims?.email) req.headers['x-user-email'] = String(entry.claims.email);
+          } catch {}
         }
       } else {
         // Existing session: allow missing Authorization; user comes from sessionUsers
@@ -764,7 +770,15 @@ const server = http.createServer(async (req, res) => {
             req.oauthUser = preview;
           } else {
             const entry = await validateTokenAndClaims(token);
-            if (entry) req.oauthUser = entry.user;
+            if (entry) {
+              req.oauthUser = entry.user;
+              try {
+                const prov = getProviderConfig(req);
+                if (prov) req.headers['x-user-issuer'] = prov.issuer || effectiveBaseUrl(req);
+                if (entry?.claims?.sub) req.headers['x-user-sub'] = String(entry.claims.sub);
+                if (entry?.claims?.email) req.headers['x-user-email'] = String(entry.claims.email);
+              } catch {}
+            }
           }
         }
       }
@@ -799,6 +813,13 @@ const server = http.createServer(async (req, res) => {
             const raw = typeof req.oauthUser === 'string' && req.oauthUser ? req.oauthUser : (String(req.headers['authorization']||'').startsWith('Bearer ') ? String(req.headers['authorization']).slice(7) : '');
             if (raw) req.headers['x-user-token'] = raw;
           }
+          // Also propagate per-session identity (issuer/sub/email) if known
+          const ident = sessionIdentity.get(sessionId);
+          if (ident) {
+            if (ident.issuer && !req.headers['x-user-issuer']) req.headers['x-user-issuer'] = String(ident.issuer);
+            if (ident.sub && !req.headers['x-user-sub']) req.headers['x-user-sub'] = String(ident.sub);
+            if (ident.email && !req.headers['x-user-email']) req.headers['x-user-email'] = String(ident.email);
+          }
         } catch {}
         await transport.handleRequest(req, res, await readBody(req));
         return;
@@ -818,6 +839,11 @@ const server = http.createServer(async (req, res) => {
           const raw = typeof req.oauthUser === 'string' && req.oauthUser ? req.oauthUser : (String(req.headers['authorization']||'').startsWith('Bearer ') ? String(req.headers['authorization']).slice(7) : '');
           if (raw) req.headers['x-user-token'] = raw;
         }
+        // Seed per-session identity fields from current request
+        if (!req.headers['x-user-issuer']) {
+          const prov = getProviderConfig(req);
+          if (prov) req.headers['x-user-issuer'] = prov.issuer || effectiveBaseUrl(req);
+        }
       } catch {}
       await transport.handleRequest(req, res, await readBody(req));
       const sid = transport.sessionId;
@@ -826,6 +852,12 @@ const server = http.createServer(async (req, res) => {
         // Remember user for session so subsequent calls can omit Authorization
         if (req.oauthUser) {
           sessionUsers.set(sid, req.oauthUser);
+          try {
+            const issuer = req.headers['x-user-issuer'] || effectiveBaseUrl(req);
+            const sub = req.headers['x-user-sub'] || '';
+            const email = req.headers['x-user-email'] || '';
+            sessionIdentity.set(sid, { issuer, sub, email });
+          } catch {}
           try { console.log(`[mcp] initialize ok user=${req.oauthUser} sid=${sid}`); } catch {}
         } else {
           try {
