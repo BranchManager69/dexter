@@ -21,6 +21,21 @@ const RESEARCH_DIR = path.join(TOKEN_AI_DIR, 'reports', 'deep-research');
 
 const ENABLE_RUN_TOOLS = String(process.env.TOKEN_AI_MCP_ENABLE_RUN_TOOLS || '1') !== '0';
 
+// Parse toolset selection from a comma-separated string.
+// Supported names: all, wallet, program, runs, reports, voice, web, trading
+function parseToolsets(arg) {
+  const raw = Array.isArray(arg) ? arg.join(',') : String(arg || '').trim();
+  if (!raw) return new Set(['all']);
+  const parts = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (parts.includes('all')) return new Set(['all']);
+  const allowed = new Set(['wallet','program','runs','reports','voice','web','trading']);
+  const out = new Set();
+  for (const p of parts) { if (allowed.has(p)) out.add(p); }
+  return out.size ? out : new Set(['all']);
+}
+
+// Trading mode is advanced-only; minimal mode removed to reduce complexity
+
 // Helper functions for resources
 function extractMintFromReport(j, filename){
   try {
@@ -55,20 +70,32 @@ function extractMeta(j){
   }
 }
 
-export function buildMcpServer(){
+export function buildMcpServer(options = {}){
+  const includeToolsets = options.includeToolsets
+    ? parseToolsets(options.includeToolsets)
+    : parseToolsets(process.env.TOKEN_AI_MCP_TOOLSETS || 'all');
+
+  const instructionsLines = [
+    'Tools and resources for Token-AI analyses.',
+    '- Resources: report://ai-token-analyses/{file} (application/json), report://ai-token-analyses/by-mint/{mint}.',
+    '- Configure toolsets: TOKEN_AI_MCP_TOOLSETS=all|wallet,program,runs,reports,voice,web,trading'
+  ];
   const server = new McpServer({ name: 'token-ai-mcp', version: '0.2.0' }, {
     capabilities: { logging: {}, tools: { listChanged: true } },
-    instructions: `Tools and resources for Token-AI analyses.\n- Tools: list_reports_page, list_resource_uris, list_recent_analyses, read_report_uri, get_report, get_latest_analysis${ENABLE_RUN_TOOLS ? ', run_agent, run_socials, list_runs, get_run_logs, kill_run' : ''}.\n- Resources: report://ai-token-analyses/{file} (application/json), report://ai-token-analyses/by-mint/{mint}.\n- Note: set TOKEN_AI_MCP_ENABLE_RUN_TOOLS=0 to hide run/kill tools.`
+    instructions: instructionsLines.join('\n')
   });
 
-  // Register all modular tools
-  registerWalletAuthTools(server);
-  registerProgramAccountsTools(server);
-  registerAgentRunTools(server);
-  registerReportAnalysisTools(server);
-  registerVoiceDebugTools(server);
-  registerWebResearchTools(server);
-  registerTradingTools(server);
+  const wantAll = includeToolsets.has('all');
+  const want = (name) => wantAll || includeToolsets.has(name);
+
+  // Register modular toolsets according to selection
+  if (want('wallet')) registerWalletAuthTools(server);
+  if (want('program')) registerProgramAccountsTools(server);
+  if (want('runs') && ENABLE_RUN_TOOLS) registerAgentRunTools(server);
+  if (want('reports')) registerReportAnalysisTools(server);
+  if (want('voice')) registerVoiceDebugTools(server);
+  if (want('web')) registerWebResearchTools(server);
+  if (want('trading')) registerTradingTools(server);
 
   // Resources (use McpServer.resource API)
   // report://ai-token-analyses/{file}

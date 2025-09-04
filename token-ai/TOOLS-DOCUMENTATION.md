@@ -74,15 +74,12 @@ Token-AI implements two distinct tool systems:
 | `finalize_report` | Compose a Deep Research report from notes |
 | `ingest_openai_webhook` | Create note from OpenAI webhook event |
 
-### Trading Tools (12 tools)
+### Trading Tools
 
 | Tool | Description |
 |------|-------------|
 | `list_wallet_token_balances` | List wallet balances, including native SOL and SPL tokens |
 | `resolve_token` | Resolve token name/symbol to Solana mint addresses |
-| `smart_sell` | Attempts multiple outputs and slippages to execute sell |
-| `smart_buy` | Attempts multiple inputs and slippages to execute buy |
-| `trade` | Unified buy/sell entrypoint with ExactIn/ExactOut support |
 | `execute_buy_preview` | Preview buy without sending transaction |
 | `execute_sell_preview` | Preview sell without sending transaction |
 | `execute_buy` | Execute token buy order using SOL |

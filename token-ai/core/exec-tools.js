@@ -1877,25 +1877,7 @@ export function createToolExecutor(config) {
 
         case 'smart_buy': {
           try {
-            if (mcpEnabled && toolsAdapter) {
-              try {
-                console.log(chalk.gray('    [mcp] smart_buy → trying MCP'));
-                const res = await toolsAdapter.mcp.callTool({ name: 'smart_buy', arguments: {
-                  wallet_id: args.wallet_id,
-                  token_mint: args.token_mint,
-                  sol_amount: args.sol_amount,
-                  out_amount_ui: args.out_amount_ui,
-                  use_exact_out: args.use_exact_out,
-                  input_mints: args.input_mints,
-                  slippages_bps: args.slippages_bps,
-                  priority_lamports: args.priority_lamports,
-                  max_price_impact_pct: args.max_price_impact_pct,
-                }});
-                if (!res.isError && res.structuredContent?.success) { console.log(chalk.gray('    [mcp] smart_buy OK')); return res.structuredContent; }
-                console.log(chalk.yellow('    [mcp] smart_buy non-success, falling back'));
-              } catch (e) { console.log(chalk.yellow('    [mcp] smart_buy error, falling back:'), e?.message || e); }
-            }
-            // Fallback: simple ExactIn using execute_buy path
+            // Deprecated: route to explicit execute paths
             if (args.use_exact_out && args.out_amount_ui) {
               // Attempt basic ExactOut via native Jupiter
               const connection = new Connection(process.env.SOLANA_RPC_ENDPOINT || 'https://api.mainnet-beta.solana.com');
@@ -1925,24 +1907,7 @@ export function createToolExecutor(config) {
 
         case 'smart_sell': {
           try {
-            if (mcpEnabled && toolsAdapter) {
-              try {
-                console.log(chalk.gray('    [mcp] smart_sell → trying MCP'));
-                const res = await toolsAdapter.mcp.callTool({ name: 'smart_sell', arguments: {
-                  wallet_id: args.wallet_id,
-                  token_mint: args.token_mint,
-                  token_amount: args.token_amount,
-                  percent_of_balance: args.percent_of_balance,
-                  outputs: args.outputs,
-                  slippages_bps: args.slippages_bps,
-                  priority_lamports: args.priority_lamports,
-                  max_price_impact_pct: args.max_price_impact_pct,
-                }});
-                if (!res.isError && res.structuredContent?.success) { console.log(chalk.gray('    [mcp] smart_sell OK')); return res.structuredContent; }
-                console.log(chalk.yellow('    [mcp] smart_sell non-success, falling back'));
-              } catch (e) { console.log(chalk.yellow('    [mcp] smart_sell error, falling back:'), e?.message || e); }
-            }
-            // Fallback: use executeSellInternal with first output or SOL
+            // Deprecated: use executeSellInternal with first output or SOL
             const outMint = Array.isArray(args.outputs) && args.outputs.length ? args.outputs[0] : SOL_MINT;
             const slippage = Array.isArray(args.slippages_bps) && args.slippages_bps.length ? args.slippages_bps[0] : (args.slippage_bps || 100);
             const a = { wallet_id: args.wallet_id, token_mint: args.token_mint, token_amount: args.token_amount, slippage_bps: slippage, output_mint: outMint };

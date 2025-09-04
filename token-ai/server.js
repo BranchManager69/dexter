@@ -770,7 +770,7 @@ if (false) app.post('/realtime/tool-call', async (req, res) => {
     }
     // Generic MCP bridge for remaining tools
     // Auto-inject default wallet_id for trading tools
-    const tradeTools = new Set(['execute_buy','execute_sell','execute_sell_all','smart_buy','smart_sell','trade','execute_buy_preview','execute_sell_preview','list_wallet_token_balances']);
+    const tradeTools = new Set(['execute_buy','execute_sell','execute_sell_all','trade','execute_buy_preview','execute_sell_preview','list_wallet_token_balances']);
     let callArgs = { ...(args||{}) };
     if (tradeTools.has(name) && !callArgs.wallet_id) {
       // If a human-friendly hint is provided, try to resolve to a wallet_id first

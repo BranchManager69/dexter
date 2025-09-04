@@ -18,7 +18,6 @@
     "mcp:balances": "node token-ai/scripts/mcp-trade.mjs balances",
     "mcp:buy": "node token-ai/scripts/mcp-trade.mjs buy",
     "mcp:sell": "node token-ai/scripts/mcp-trade.mjs sell",
-    "mcp:trade": "node token-ai/scripts/mcp-trade.mjs trade",
     "mcp:search": "node token-ai/scripts/mcp-research.mjs search",
     "mcp:fetch": "node token-ai/scripts/mcp-research.mjs fetch",
     "mcp:crawl:site": "node token-ai/scripts/mcp-research.mjs crawl:site",

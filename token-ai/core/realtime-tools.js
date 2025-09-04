@@ -41,9 +41,7 @@ export function getRealtimeTools() {
     { type:'function', name:'execute_sell', description:'Execute a sell for a token', parameters:{ type:'object', properties:{ wallet_id:{ type:'string' }, token_mint:{ type:'string' }, token_amount:{ type:'number' }, output_mint:{ type:'string' }, priority_lamports:{ type:'integer' }, slippage_bps:{ type:'integer' } }, required:['wallet_id','token_mint','token_amount'] } },
     { type:'function', name:'execute_sell_all', description:'Sell entire token balance', parameters:{ type:'object', properties:{ wallet_id:{ type:'string' }, token_mint:{ type:'string' }, priority_lamports:{ type:'integer' }, slippage_bps:{ type:'integer' } }, required:['wallet_id','token_mint'] } },
 
-    // Robust trade helpers
-    { type:'function', name:'smart_buy', description:'Robust buy helper; tries routes/slippage', parameters:{ type:'object', properties:{ wallet_id:{ type:'string' }, token_mint:{ type:'string' }, sol_amount:{ type:'number' }, slippages_bps:{ type:'array', items:{ type:'integer' } }, max_price_impact_pct:{ type:'number' } }, required:['wallet_id','token_mint','sol_amount'] } },
-    { type:'function', name:'smart_sell', description:'Robust sell helper; tries outputs/slippage', parameters:{ type:'object', properties:{ wallet_id:{ type:'string' }, token_mint:{ type:'string' }, token_amount:{ type:'number' }, percent_of_balance:{ type:'number' }, outputs:{ type:'array', items:{ type:'string' } }, slippages_bps:{ type:'array', items:{ type:'integer' } }, max_price_impact_pct:{ type:'number' } }, required:['wallet_id','token_mint'] } },
-    { type:'function', name:'trade', description:'Unified trade (buy/sell) with flexible args', parameters:{ type:'object', properties:{ action:{ type:'string', enum:['buy','sell'] }, wallet_id:{ type:'string' }, token_mint:{ type:'string' }, sol_amount:{ type:'number' }, token_amount:{ type:'number' }, percent_of_balance:{ type:'number' }, outputs:{ type:'array', items:{ type:'string' } }, output_mint:{ type:'string' }, slippages_bps:{ type:'array', items:{ type:'integer' } }, max_price_impact_pct:{ type:'number' }, priority_lamports:{ type:'integer' } }, required:['action','wallet_id','token_mint'] } },
+    // Deprecated robust trade helpers (removed)
+    // Unified trade removed; prefer explicit preview/execute flows
   ];
 }

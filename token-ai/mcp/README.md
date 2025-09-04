@@ -9,6 +9,23 @@ This folder contains the Model Context Protocol (MCP) servers for Token‑AI. Th
 
 Legacy note: The old ChatGPT-specific SSE server (`mcp/http-server-chatgpt.mjs`) is archived under `mcp/_archive/` and no longer used in Dexter.
 
+## Toolset Scoping (Reduce Context Size)
+
+By default, the MCP server exposed all tool groups, which can bloat model context. You can now scope tools globally or per session.
+
+- Global (env):
+  - `TOKEN_AI_MCP_TOOLSETS=all` (default)
+  - Or a CSV of groups: `wallet,program,runs,reports,voice,web,trading`
+  - Example: `TOKEN_AI_MCP_TOOLSETS=reports,web` for a lightweight research setup
+
+- Per-session (HTTP only):
+  - Initialize with `POST /mcp?tools=trading,wallet,reports`
+  - Subsequent requests reuse the same session with that toolset; no need to repeat the param
+
+- Trading tools: advanced only. We keep preview/execute/unified tools and remove deprecated helpers over time.
+
+Nothing changes unless you set these flags; defaults preserve existing behavior and tests.
+
 ## Quick Start
 
 - Install deps once in this repo: `npm install`
@@ -18,10 +35,12 @@ Legacy note: The old ChatGPT-specific SSE server (`mcp/http-server-chatgpt.mjs`)
   - Stdio: `npm run test:mcp`
   - HTTP: `npm run test:mcp:http`
 
-PM2 services (already set up during development):
-- `token-ai-mcp-stdio`: `node mcp/server.mjs`
-- `token-ai-mcp-http`: `node mcp/http-server.mjs`
-- Manage: `pm2 status`, `pm2 logs <name> --lines 100`, `pm2 restart <name>`
+Systemd (production):
+- Units: `dexter-mcp` (MCP HTTP) and `dexter-ui` (UI/API/WS)
+- Common commands:
+  - Status: `systemctl status dexter-mcp`
+  - Live logs: `sudo journalctl -u dexter-mcp -f`
+  - Restart: `sudo systemctl restart dexter-mcp`
 
 ## Endpoints and Transports
 
@@ -34,6 +53,8 @@ PM2 services (already set up during development):
 - Auth: Bearer token via `TOKEN_AI_MCP_TOKEN` or OAuth bearer (when OAuth enabled)
 - CORS: `TOKEN_AI_MCP_CORS` (default `*`) and `Mcp-Session-Id` exposed
 - Implementation: `mcp/http-server-oauth.mjs` using `StreamableHTTPServerTransport`
+  - Per-session scoping: `POST /mcp?tools=...` as described above
+  - Through the UI proxy: `POST /mcp-proxy?tools=...&userToken=...`
 
 ### HTTP (OAuth variant)
 
@@ -83,6 +104,7 @@ Identity → wallet mapping
 - `TOKEN_AI_MCP_CORS` (default: `*`): Allowed origin(s)
 - `TOKEN_AI_MCP_OAUTH` (default: `false`): Enable OAuth mode (http-server-oauth)
 - `TOKEN_AI_MCP_PUBLIC_URL`: Public base URL for `.well-known` + callback (e.g., `https://example.com/mcp`)
+- `TOKEN_AI_MCP_TOOLSETS` (default: `all`): CSV of toolsets to enable globally (`wallet,program,runs,reports,voice,web,trading`)
 - `TOKEN_AI_DEMO_MODE` (default: `0`): When `1`, allows the server‑injected bearer from `/mcp-proxy` without contacting an external IdP. Intended for demo/browser UI flows.
 - `MCP_USER_JWT_SECRET`: HS256 secret used by the UI server to mint short‑lived per‑user tokens (`/mcp-user-token`). Required for `/mcp-proxy`.
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`: For UI magic‑link login; used by `/auth/config` and `/mcp-user-token`.
@@ -217,21 +239,11 @@ ChatGPT canonical
   - Output: `{ items: [{ mint, ata, decimals, amount_ui, amount_raw }] }` sorted by `amount_ui`.
     - SOL appears with `mint=So1111…12` and `ata="native"`.
 
-- `smart_buy(wallet_id, token_mint, sol_amount? | out_amount_ui?, use_exact_out?, input_mints?, slippages_bps?, priority_lamports?, max_price_impact_pct?)`:
-  - Purpose: Robust buy helper with slippage ramp and optional ExactOut.
-  - ExactIn: provide `sol_amount` (defaults `input_mints: [SOL]`, `slippages_bps: [100,200,300]`).
-  - ExactOut: set `use_exact_out: true` and provide `out_amount_ui`.
-  - Output: `{ success, tx_hash, tokens_bought_ui, in_mint, in_amount_ui, slippage_bps_used, price_impact, solscan_url }`.
-
-- `smart_sell(wallet_id, token_mint, token_amount? | percent_of_balance?, outputs?, slippages_bps?, priority_lamports?)`:
-  - Purpose: Robust sell helper; tries `outputs` (defaults `[SOL, USDC]`) and `slippages_bps` (defaults `[100,200,300]`).
-  - Output: `{ success, tx_hash, out_mint, out_amount_ui, tokens_sold_ui, slippage_bps_used, solscan_url }`.
-
-- `trade(action, wallet_id, token_mint, ...)`:
-  - Purpose: Unified entrypoint wrapping smart_buy/smart_sell.
-  - Buy: `action: 'buy'` with `sol_amount` (ExactIn) or `use_exact_out: true, out_amount_ui` (ExactOut). Optional `input_mints`, `slippages_bps`, `max_price_impact_pct`.
-  - Sell: `action: 'sell'` with `token_amount` or `percent_of_balance`. Optional `outputs`, `slippages_bps`.
-  - Output: `{ success, tx_hash, detail, solscan_url }`.
+- `execute_buy_preview(token_mint, sol_amount, slippage_bps?)` → expected tokens and price impact
+- `execute_sell_preview(token_mint, token_amount, slippage_bps?, output_mint?)` → expected SOL/out and impact
+- `execute_buy(wallet_id?, token_mint, sol_amount, slippage_bps?, priority_lamports?)` → on‑chain buy
+- `execute_sell(wallet_id?, token_mint, token_amount, slippage_bps?, priority_lamports?, output_mint?)` → on‑chain sell
+- `execute_sell_all(wallet_id?, token_mint, slippage_bps?, priority_lamports?)` → sell full balance
 
 ## Resources
 
@@ -279,15 +291,8 @@ Run trading tools via npm scripts that wrap the MCP stdio server, auto‑loading
 - Buy (ExactIn)
   - `npm run mcp:buy -- <WALLET_ID> <MINT> --sol=0.0005 --slippage=150,250,300`
 
-- Buy (ExactOut)
-  - `npm run mcp:buy -- <WALLET_ID> <MINT> --exact-out --out=0.1`
-
-- Sell (robust)
-  - `npm run mcp:sell -- <WALLET_ID> <MINT> --pct=10 --outputs=So1111...,EPjF... --slippage=100,200,300 --max-impact=1.0`
-
-- Unified trade
-  - `npm run mcp:trade -- buy <WALLET_ID> <MINT> --sol=0.0003`
-  - `npm run mcp:trade -- sell <WALLET_ID> <MINT> --pct=10`
+- Sell
+  - `npm run mcp:sell -- <WALLET_ID> <MINT> --amount=0.1 --output=SOL --slippage=200`
 
 ### Trading Quick Start
 
@@ -295,23 +300,21 @@ Run trading tools via npm scripts that wrap the MCP stdio server, auto‑loading
   - name: `list_wallet_token_balances`
   - args: `{ wallet_id: "<WALLET_ID>", min_ui: 0.000001, limit: 10 }`
 
-- Buy (ExactIn):
-  - name: `smart_buy`
-  - args: `{ wallet_id: "<WALLET_ID>", token_mint: "<MINT>", sol_amount: 0.0005, slippages_bps: [150,250,300] }`
+- Preview buy:
+  - name: `execute_buy_preview`
+  - args: `{ token_mint: "<MINT>", sol_amount: 0.0005, slippage_bps: 150 }`
 
-- Buy (ExactOut):
-  - name: `smart_buy`
-  - args: `{ wallet_id: "<WALLET_ID>", token_mint: "<MINT>", use_exact_out: true, out_amount_ui: 0.1 }`
+- Execute buy:
+  - name: `execute_buy`
+  - args: `{ wallet_id: "<WALLET_ID>", token_mint: "<MINT>", sol_amount: 0.0005, slippage_bps: 150 }`
 
-- Sell (robust):
-  - name: `smart_sell`
-  - args: `{ wallet_id: "<WALLET_ID>", token_mint: "<MINT>", percent_of_balance: 10, outputs: ["So1111…12","EPjF…tZ8"], slippages_bps: [100,200,300] }`
+- Preview sell:
+  - name: `execute_sell_preview`
+  - args: `{ token_mint: "<MINT>", token_amount: 0.1, slippage_bps: 200, output_mint: "So1111…12" }`
 
-- Unified trade:
-  - name: `trade`
-  - args: `{ action: "buy", wallet_id: "<WALLET_ID>", token_mint: "<MINT>", sol_amount: 0.0003 }`
-  - name: `trade`
-  - args: `{ action: "sell", wallet_id: "<WALLET_ID>", token_mint: "<MINT>", percent_of_balance: 10 }`
+- Execute sell:
+  - name: `execute_sell`
+  - args: `{ wallet_id: "<WALLET_ID>", token_mint: "<MINT>", token_amount: 0.1, slippage_bps: 200, output_mint: "So1111…12" }`
 
 ## Deep Research
 
@@ -378,9 +381,9 @@ To ingest OpenAI Background Mode webhooks from the OpenAI platform:
 
 - Edit `mcp/common.mjs` to add or change tools/resources
 - Run `npm run test:mcp` and `npm run test:mcp:http` to verify
-- Restart PM2 services after changes:
-  - `pm2 restart token-ai-mcp-stdio`
-  - `pm2 restart token-ai-mcp-http`
+- Restart services after changes (production):
+  - `sudo systemctl restart dexter-mcp`
+  - If UI routes changed: `sudo systemctl restart dexter-ui`
 
 ## License
 

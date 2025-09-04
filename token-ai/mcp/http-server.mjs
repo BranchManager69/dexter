@@ -111,14 +111,19 @@ const server = http.createServer(async (req, res) => {
         await transport.handleRequest(req, res, await readBody(req));
         return;
       }
-      // New session: initialize
+      // New session: initialize (allow per-session toolsets via ?tools=)
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (sid) => { transports.set(sid, transport); },
         onsessionclosed: (sid) => { transports.delete(sid); const s = servers.get(sid); if (s) { try { s.close(); } catch {} servers.delete(sid); } },
         enableDnsRebindingProtection: false,
       });
-      const mcpServer = buildMcpServer();
+      let includeToolsets = undefined;
+      try {
+        const tools = url.searchParams.get('tools');
+        if (tools) includeToolsets = tools;
+      } catch {}
+      const mcpServer = buildMcpServer({ includeToolsets });
       await mcpServer.connect(transport);
       await transport.handleRequest(req, res, await readBody(req));
       const sid = transport.sessionId;

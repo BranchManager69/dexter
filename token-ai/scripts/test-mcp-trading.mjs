@@ -173,7 +173,7 @@ async function main(){
       console.log('sell_all test skipped:', e.message || String(e));
     }
 
-    // 3) Token-to-token trade: CLANKER → JUP, then JUP → CLANKER
+    // 3) Token-to-token trade (explicit executes): CLANKER → JUP, then JUP → CLANKER
     try {
       console.log('--- Token-to-token trade: CLANKER ↔ JUP ---');
       // Resolve CLANKER and JUP mints
@@ -187,13 +187,12 @@ async function main(){
       if (!clanker) {
         console.log('CLANKER not found in wallet; skipping token-to-token trade.');
       } else {
-        // Trade a safe fraction CLANKER → JUP (exact-in via sell path with outputs=[JUP])
+        // Sell a safe fraction CLANKER → JUP directly (outputs=[JUP])
         const sellAmt = Number(Math.max(0.0001, Math.min(clanker.amount_ui * 0.15, clanker.amount_ui * 0.5)).toFixed(6));
         const pv = await call(client, 'execute_sell_preview', { token_mint: clanker.mint, token_amount: sellAmt, slippage_bps: 200, output_mint: jupMint });
         console.log('preview CLANKER→JUP:', pv);
-        const t1 = await client.callTool({ name: 'trade', arguments: { action: 'sell', wallet_id: wallet.wallet_id, token_mint: clanker.mint, token_amount: sellAmt, outputs: [jupMint], slippages_bps: [200,300] } });
-        if (t1.isError) throw new Error('trade sell CLANKER→JUP failed: ' + (t1.content?.[0]?.text || 'tool_error'));
-        console.log('trade CLANKER→JUP:', t1.structuredContent || t1);
+        const t1 = await call(client, 'execute_sell', { wallet_id: wallet.wallet_id, token_mint: clanker.mint, token_amount: sellAmt, slippage_bps: 200, output_mint: jupMint });
+        console.log('exec CLANKER→JUP:', t1);
         await sleep(1500);
 
         // Trade back JUP → CLANKER using some of the JUP we just acquired
@@ -205,9 +204,8 @@ async function main(){
           const jupSell = Number(Math.max(0.00005, jupBal.amount_ui * 0.25).toFixed(6));
           const pv2 = await call(client, 'execute_sell_preview', { token_mint: jupMint, token_amount: jupSell, slippage_bps: 200, output_mint: clanker.mint });
           console.log('preview JUP→CLANKER:', pv2);
-          const t2 = await client.callTool({ name: 'trade', arguments: { action: 'sell', wallet_id: wallet.wallet_id, token_mint: jupMint, token_amount: jupSell, outputs: [clanker.mint], slippages_bps: [200,300] } });
-          if (t2.isError) throw new Error('trade sell JUP→CLANKER failed: ' + (t2.content?.[0]?.text || 'tool_error'));
-          console.log('trade JUP→CLANKER:', t2.structuredContent || t2);
+          const t2 = await call(client, 'execute_sell', { wallet_id: wallet.wallet_id, token_mint: jupMint, token_amount: jupSell, slippage_bps: 200, output_mint: clanker.mint });
+          console.log('exec JUP→CLANKER:', t2);
         }
       }
     } catch (e) {

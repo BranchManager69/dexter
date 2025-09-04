@@ -157,7 +157,12 @@ export function registerMcpProxyRoutes(app) {
       const target = String(process.env.TOKEN_AI_MCP_URL || '').trim();
       if (!target) { return res.status(503).json({ ok:false, error:'mcp_url_not_configured' }); }
       const token = String(process.env.TOKEN_AI_MCP_TOKEN || '').trim();
-      const url = target;
+      // Forward query params to MCP, except the UI-only userToken
+      const origQs = (()=>{ try { return String(req.originalUrl.split('?')[1]||''); } catch { return ''; } })();
+      const params = new URLSearchParams(origQs);
+      params.delete('userToken');
+      const qs = params.toString();
+      const url = qs ? `${target}?${qs}` : target;
       const method = req.method || 'GET';
       const hdr = new Headers();
       try {

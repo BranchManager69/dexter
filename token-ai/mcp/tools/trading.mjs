@@ -63,7 +63,7 @@ async function resolveWalletIdOrNull(explicitWalletId, extra){
   return envDefault ? String(envDefault) : null;
 }
 
-export function registerTradingTools(server) {
+export function registerTradingTools(server, options = {}) {
   // Utility: list SPL token balances for a wallet (parsed)
   // Purpose: Let MCP clients discover what tokens a wallet can sell
   // Inputs: wallet_id (managed_wallets ID), min_ui?, limit?
@@ -432,7 +432,8 @@ export function registerTradingTools(server) {
   });
 
   // Trading Tools - Smart Sell (real)
-  server.registerTool('smart_sell', {
+  /* removed: smart_sell (deprecated) */
+  if (false) server.registerTool('smart_sell', {
     title: 'Smart Sell',
     description: 'Attempts multiple outputs and slippages to execute a sell for the given token.',
     inputSchema: {
@@ -517,7 +518,8 @@ export function registerTradingTools(server) {
   });
 
   // Trading Tools - Smart Buy (real)
-  server.registerTool('smart_buy', {
+  /* removed: smart_buy (deprecated) */
+  if (false) server.registerTool('smart_buy', {
     title: 'Smart Buy',
     description: 'Attempts multiple input mints and slippages to execute a buy for the given token. Supports ExactOut.',
     inputSchema: {
@@ -603,141 +605,7 @@ export function registerTradingTools(server) {
     }
   });
 
-  // Unified Trading Tool (inline logic)
-  server.registerTool('trade', {
-    title: 'Trade',
-    description: 'Unified buy/sell entrypoint. For buy supports ExactIn (sol_amount) and ExactOut (out_amount_ui). For sell tries outputs/slippages.',
-    inputSchema: {
-      action: z.enum(['buy', 'sell']).describe('buy or sell'),
-      wallet_id: z.string().optional(),
-      token_mint: z.string(),
-      sol_amount: z.number().positive().optional(),
-      out_amount_ui: z.number().positive().optional(),
-      use_exact_out: z.boolean().optional(),
-      token_amount: z.number().nonnegative().optional(),
-      percent_of_balance: z.number().nonnegative().max(100).optional(),
-      input_mints: z.array(z.string()).optional(),
-      outputs: z.array(z.string()).optional(),
-      output_mint: z.string().optional(),
-      slippages_bps: z.array(z.number().int()).optional(),
-      priority_lamports: z.number().int().optional(),
-      max_price_impact_pct: z.number().optional(),
-    },
-    outputSchema: {
-      success: z.boolean(),
-      tx_hash: z.string().nullable(),
-      wallet_id: z.string(),
-      action: z.string(),
-      token_mint: z.string(),
-      detail: z.any().optional(),
-      solscan_url: z.string().nullable(),
-    }
-  }, async (args, extra) => {
-    try {
-      const { action, token_mint } = args;
-      let wallet_id = args.wallet_id; if (!wallet_id) { const r = resolveWalletForRequest(extra); wallet_id = r.wallet_id; if (!wallet_id) return { content:[{ type:'text', text:'no_wallet' }], isError:true }; }
-      const conn = await getRpcConnection();
-      const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
-      const { keypair, publicKey } = await loadWallet(wallet_id);
-      const { PublicKey } = await import('@solana/web3.js');
-      const { getAssociatedTokenAddress, getAccount } = await import('@solana/spl-token');
-      const { SOL_MINT, SOL_DECIMALS, getQuote, getSwapTransaction, deserializeTransaction, formatTokenAmount } = await import('../../trade-manager/jupiter-api.js');
-
-      if (action === 'buy') {
-        // Smart buy inline
-        const inMints = Array.isArray(args.input_mints) && args.input_mints.length ? args.input_mints : [SOL_MINT];
-        const slips = Array.isArray(args.slippages_bps) && args.slippages_bps.length ? args.slippages_bps : [100,200,300];
-        const outDecimals = await getTokenDecimals(token_mint);
-        const isExactOut = String(args.use_exact_out||'').toLowerCase()==='true' || args.use_exact_out===true;
-        let chosen = null;
-        if (isExactOut) {
-          const rawOut = BigInt(Math.floor(Number(args.out_amount_ui||0) * Math.pow(10, outDecimals)));
-          if (!rawOut || rawOut <= 0n) return { content:[{ type:'text', text:'bad_out_amount' }], isError:true };
-          for (const im of inMints) {
-            for (const s of slips) {
-              try {
-                const quote = await getQuote({ inputMint: im, outputMint: token_mint, amount: String(rawOut), slippageBps: Number(s), swapMode: 'ExactOut' });
-                const pi = (quote?.priceImpactPct ?? null);
-                if (args.max_price_impact_pct != null && typeof pi === 'number' && pi > Number(args.max_price_impact_pct)) continue;
-                if (quote?.outAmount) { chosen = { im, s, quote }; break; }
-              } catch {}
-            }
-            if (chosen) break;
-          }
-        } else {
-          const lamports = BigInt(Math.floor(Number(args.sol_amount||0) * Math.pow(10, SOL_DECIMALS)));
-          if (!lamports || lamports <= 0n) return { content:[{ type:'text', text:'bad_sol_amount' }], isError:true };
-          for (const im of inMints) {
-            for (const s of slips) {
-              try {
-                const quote = await getQuote({ inputMint: im, outputMint: token_mint, amount: String(lamports), slippageBps: Number(s), swapMode: 'ExactIn' });
-                const pi = (quote?.priceImpactPct ?? null);
-                if (args.max_price_impact_pct != null && typeof pi === 'number' && pi > Number(args.max_price_impact_pct)) continue;
-                if (quote?.outAmount) { chosen = { im, s, quote }; break; }
-              } catch {}
-            }
-            if (chosen) break;
-          }
-        }
-        if (!chosen) return { content:[{ type:'text', text:'no_route' }], isError:true };
-        const { im, s, quote } = chosen;
-        const swapResponse = await getSwapTransaction({ quoteResponse: quote, userPublicKey: publicKey, wrapAndUnwrapSol: true, priorityLamports: Number(args.priority_lamports)||10000 });
-        const transaction = deserializeTransaction(swapResponse.swapTransaction);
-        transaction.sign([keypair]);
-        const sig = await conn.sendRawTransaction(transaction.serialize());
-        await conn.confirmTransaction(sig, 'confirmed');
-        const outUi = quote?.outAmount ? formatTokenAmount(quote.outAmount, outDecimals) : null;
-        const inUi = quote?.inAmount ? (im===SOL_MINT ? formatTokenAmount(quote.inAmount, SOL_DECIMALS) : formatTokenAmount(quote.inAmount, 6)) : null;
-        return { structuredContent: { success: true, tx_hash: sig, wallet_id, action:'buy', token_mint, detail: { in_mint: im, in_amount_ui: inUi, out_amount_ui: outUi, slippage_bps_used: Number(s), price_impact: quote?.priceImpactPct ?? null }, solscan_url: `https://solscan.io/tx/${sig}` }, content:[{ type:'text', text:`tx=${sig}` }] };
-      }
-
-      if (action === 'sell') {
-        const USDC = 'EPjFWdd5AufqSSqeM2qN1xzyXH8m9GZ4HCS4ZLxLtZ8';
-        const outMints = Array.isArray(args.outputs) && args.outputs.length ? args.outputs : [SOL_MINT, USDC];
-        const slips = Array.isArray(args.slippages_bps) && args.slippages_bps.length ? args.slippages_bps : [100,200,300];
-        // Determine sell amount
-        let sellUi = Number(args.token_amount || 0);
-        if (!sellUi || sellUi <= 0) {
-          const mintPk = new PublicKey(token_mint);
-          const ata = await getAssociatedTokenAddress(mintPk, publicKey);
-          let account; try { account = await getAccount(conn, ata); } catch { account = null; }
-          const dec = await getTokenDecimals(token_mint);
-          const balanceRaw = account?.amount ?? 0n;
-          const balUi = Number(balanceRaw) / Math.pow(10, dec);
-          const pct = Number(args.percent_of_balance || 0);
-          if (pct > 0) sellUi = balUi * (pct / 100);
-          if (!sellUi || sellUi <= 0) return { content:[{ type:'text', text:'no_amount' }], isError:true };
-        }
-        const decIn = await getTokenDecimals(token_mint);
-        const raw = BigInt(Math.floor(Number(sellUi) * Math.pow(10, decIn)));
-        let chosen = null;
-        for (const outMint of outMints) {
-          for (const s of slips) {
-            try {
-              const quote = await getQuote({ inputMint: token_mint, outputMint: outMint, amount: String(raw), slippageBps: Number(s) });
-              const pi = (quote?.priceImpactPct ?? null);
-              if (args.max_price_impact_pct != null && typeof pi === 'number' && pi > Number(args.max_price_impact_pct)) continue;
-              if (quote?.outAmount) { chosen = { outMint, s, quote }; break; }
-            } catch {}
-          }
-          if (chosen) break;
-        }
-        if (!chosen) return { content:[{ type:'text', text:'no_route' }], isError:true };
-        const { outMint, s, quote } = chosen;
-        const swapResponse = await getSwapTransaction({ quoteResponse: quote, userPublicKey: publicKey, wrapAndUnwrapSol: true, priorityLamports: Number(args.priority_lamports)||10000 });
-        const transaction = deserializeTransaction(swapResponse.swapTransaction);
-        transaction.sign([keypair]);
-        const sig = await conn.sendRawTransaction(transaction.serialize());
-        await conn.confirmTransaction(sig, 'confirmed');
-        const outUi = quote?.outAmount ? (outMint===SOL_MINT ? formatTokenAmount(quote.outAmount, SOL_DECIMALS) : formatTokenAmount(quote.outAmount, 6)) : null;
-        return { structuredContent: { success: true, tx_hash: sig, wallet_id, action:'sell', token_mint, detail: { out_mint: outMint, out_amount_ui: outUi, slippage_bps_used: Number(s) }, solscan_url: `https://solscan.io/tx/${sig}` }, content:[{ type:'text', text:`tx=${sig}` }] };
-      }
-
-      return { content:[{ type:'text', text:'invalid_action' }], isError:true };
-    } catch (e) {
-      return { content: [{ type:'text', text: e?.message || 'trade_failed' }], isError: true };
-    }
-  });
+  // Unified Trading Tool removed: prefer explicit preview/execute tools
 
   // Preview Tools
   server.registerTool('execute_buy_preview', {
@@ -798,7 +666,7 @@ export function registerTradingTools(server) {
     }
   });
 
-  // Execution Tools (real implementations)
+  // Execution Tools
   server.registerTool('execute_buy', {
     title: 'Execute Buy',
     description: 'Execute a token buy order using SOL from a managed wallet (on-chain).',
@@ -1074,6 +942,7 @@ export function registerTradingTools(server) {
     }
   });
 
+  // Wallet listing is useful in both modes
   server.registerTool('list_managed_wallets', {
     title: 'List Managed Wallets',
     description: 'List managed wallets available for trading (IDs and public keys).',

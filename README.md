@@ -23,6 +23,7 @@ Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https
 - Updating & Deploying
 - Logs & Debugging
 - MCP endpoints
+- MCP toolsets & trading
 - PM2 → systemd differences
 - Troubleshooting
 
@@ -153,6 +154,14 @@ See `AGENTS.md` for contributor guidelines and coding conventions.
 - Health: `GET /mcp/health` → basic JSON status (issuer, oauth, sessions)
 - OAuth OIDC metadata: `/.well-known/oauth-authorization-server` and `/.well-known/openid-configuration`
 - Stream check: `GET /mcp` with `Accept: text/event-stream` should return 200 and stream events
+
+## MCP toolsets & trading
+- Scope tools to reduce context size and improve reliability.
+- Global (env):
+  - `TOKEN_AI_MCP_TOOLSETS=all` (default) or CSV of `wallet,program,runs,reports,voice,web,trading`.
+- Per-session (HTTP): initialize with `POST /mcp?tools=reports,web`.
+- Through UI proxy: `/mcp-proxy?tools=…&userToken=…`.
+- Details: see `token-ai/mcp/README.md` → Toolset Scoping.
 
 ## PM2 → systemd differences
 - Process manager

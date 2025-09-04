@@ -125,7 +125,7 @@ export function registerReportAnalysisTools(server) {
   // Tools: reports
   server.registerTool('list_recent_analyses', {
     title: 'List Recent Analyses',
-    description: 'Summarize recent analysis JSON files',
+    description: 'Summarize recent analysis JSON files.',
     inputSchema: { limit: z.number().int().optional(), mintedOnly: z.boolean().optional() },
     outputSchema: {
       items: z.array(z.object({
@@ -154,7 +154,7 @@ export function registerReportAnalysisTools(server) {
   // Tools: resource URIs (simple browse helper)
   server.registerTool('list_resource_uris', {
     title: 'List Resource URIs',
-    description: 'Return report resource URIs (report://) for recent analyses',
+    description: 'Return recent report resource URIs (report://).',
     inputSchema: { limit: z.number().int().optional() },
     outputSchema: { uris: z.array(z.string()) }
   }, async ({ limit }) => {
@@ -165,7 +165,7 @@ export function registerReportAnalysisTools(server) {
 
   server.registerTool('get_latest_analysis', {
     title: 'Get Latest Analysis',
-    description: 'Return the most recent analysis JSON',
+    description: 'Return the most recent analysis JSON.',
     outputSchema: {
       file: z.string().nullable(),
       mtime: z.number().nullable(),
@@ -233,7 +233,7 @@ export function registerReportAnalysisTools(server) {
   // Tool: get report head (metadata only)
   server.registerTool('get_report_head', {
     title: 'Get Report Head',
-    description: 'Return lightweight metadata for a report (by filename, mint, or uri)',
+    description: 'Return lightweight metadata for a report (by filename, mint, or uri).',
     inputSchema: {
       filename: z.string().optional(),
       mint: z.string().optional(),
@@ -445,10 +445,10 @@ export function registerReportAnalysisTools(server) {
     return { structuredContent: { results }, content: [{ type:'text', text: results.map(r=>r.file).join('\n') }] };
   });
 
-  // ChatGPT-compatible: search tool (returns content[0].text as JSON-encoded { results: [{id,title,url}] })
+  // ChatGPT-compatible: search tool (returns JSON string with { results })
   server.registerTool('search', {
     title: 'Search',
-    description: 'Return a list of relevant reports matching the query (ChatGPT-compatible schema).',
+    description: 'Return relevant reports matching the query (ChatGPT schema).',
     inputSchema: { query: z.string() },
     outputSchema: { results: z.array(z.object({ id: z.string(), title: z.string(), url: z.string() })) }
   }, async ({ query }) => {
@@ -476,10 +476,10 @@ export function registerReportAnalysisTools(server) {
     return { structuredContent: payload, content: [{ type:'text', text: JSON.stringify(payload) }] };
   });
 
-  // ChatGPT-compatible: fetch tool (returns content[0].text as JSON-encoded { id,title,text,url,metadata })
+  // ChatGPT-compatible: fetch tool (returns JSON string with { id,title,text,url,metadata })
   server.registerTool('fetch', {
     title: 'Fetch',
-    description: 'Fetch the full contents of a search result by id (report filename). Returns ChatGPT-compatible schema.',
+    description: 'Fetch a search result by id (report filename).',
     inputSchema: { id: z.string() },
     outputSchema: { id: z.string(), title: z.string(), text: z.string(), url: z.string(), metadata: z.any().optional() }
   }, async ({ id }) => {

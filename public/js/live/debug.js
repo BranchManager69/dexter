@@ -83,7 +83,7 @@ const vd = {
             const result = typeof ln.extra.result === 'string' ? 
               JSON.parse(ln.extra.result.replace(/…$/, '}')) : ln.extra.result;
             const toolName = ln.extra.name;
-            const isTradeTool = ['execute_buy', 'execute_sell', 'execute_sell_all', 'smart_buy', 'smart_sell', 'trade'].includes(toolName);
+            const isTradeTool = ['execute_buy', 'execute_sell', 'execute_sell_all'].includes(toolName);
             
             if (isTradeTool && result?.mcp?.tx_hash) {
               // Create special rendering for trade results

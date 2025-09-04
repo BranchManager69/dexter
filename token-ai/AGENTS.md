@@ -38,23 +38,12 @@
 - Avoid committing Telegram `.session` artifacts; ensure sessions and media caches are gitignored.
 - Networked tools respect provider limits; prefer `--x-concurrency=1–2` to reduce bans.
 
-## PM2 + Monorepo Deployment
-- Ecosystem file: lives one level up at `../ecosystem.config.cjs` (gitignored by design). This subrepo is a subtree of the parent monorepo.
-- Managed processes (relevant to `token-ai/`):
-  - `ai-ui`: runs `token-ai/server.js` (dashboard/live UI). Port via `TOKEN_AI_UI_PORT` (default 3013). Env also sets `TOKEN_AI_MAX_CONCURRENCY`, `TOKEN_AI_LOGS_PER_RUN_LIMIT`, `TOKEN_AI_CHILD_MAX_MB`, `TOKEN_AI_BROADCAST_CHILD_LOGS`, `TOKEN_AI_EVENTS_TOKEN`.
-  - `tg-daemon`: runs `token-ai/socials/telegram/session-daemon.js` (SOCKS5 MTProto helper for Telegram tooling).
-  - `token-ai-mcp-http`: runs `token-ai/mcp/http-server.mjs` (full MCP tool server over HTTP/WS). Port via `TOKEN_AI_MCP_PORT` (default 3928).
-  - `token-ai-mcp-stdio`: runs `token-ai/mcp/server.mjs` (stdio MCP, rarely needed under PM2).
-- Legacy (archived): `mcp/_archive/http-server-chatgpt.mjs` was an SSE-only variant. Dexter standardizes on `mcp/http-server-oauth.mjs` at `/mcp` (Streamable HTTP) and does not require a separate SSE process.
-- Parent working directory: PM2 `cwd` is the monorepo root; scripts reference `token-ai/...` paths. External deps like `../config/prisma.js` resolve from the parent.
-- Common PM2 commands:
-  - Reload UI: `pm2 reload ai-ui`
-  - Restart with env updates: `pm2 restart ai-ui --update-env`
-  - Telegram daemon: `pm2 restart tg-daemon --update-env`
-  - MCP HTTP: `pm2 restart token-ai-mcp-http --update-env`
-  - Inspect: `pm2 status`, `pm2 logs <name> --lines 100`, `pm2 jlist`
-- Local vs PM2: `node server.js` is fine for ad‑hoc runs; production is PM2‑managed—use the commands above instead of invoking Node directly.
-- Assistant visibility note: automated tools in this folder cannot see PM2 state or the parent ecosystem file unless explicitly referenced; that file is outside this subtree. Operational guidance is captured here for clarity.
+## Systemd Deployment (Dexter)
+- Services: `dexter-ui` (UI/API/WS) and `dexter-mcp` (MCP HTTP)
+- Start/Stop/Restart: `sudo systemctl start|stop|restart dexter-ui dexter-mcp`
+- Status: `systemctl status dexter-ui` / `systemctl status dexter-mcp`
+- Logs: `sudo journalctl -u dexter-ui -f` / `sudo journalctl -u dexter-mcp -f`
+- Notes: Production runs under systemd. Local ad‑hoc runs via `node server.js` are fine for development.
 
 ## Events, WebSocket, and Runner API
 

@@ -2,9 +2,8 @@
 // Lightweight CLI to call MCP trading tools without Codex
 // Commands:
 //   balances <wallet_id> [--min-ui=NUM] [--limit=N]
-//   buy <wallet_id> <mint> [--sol=NUM] [--exact-out --out=NUM] [--slippage=150,250,300] [--max-impact=PCT]
-//   sell <wallet_id> <mint> [--amount=NUM] [--pct=PCT] [--outputs=SOL,USDC] [--slippage=100,200,300] [--max-impact=PCT]
-//   trade <buy|sell> ... (same flags as above)
+//   buy <wallet_id> <mint> [--sol=NUM] [--slippage=150,250,300]
+//   sell <wallet_id> <mint> [--amount=NUM] [--pct=PCT] [--output=SOL|USDC] [--slippage=100,200,300]
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,9 +18,8 @@ const PARENT = path.resolve(ROOT, '..');
 function usage() {
   console.log(`Usage:
   node scripts/mcp-trade.mjs balances <wallet_id> [--min-ui=NUM] [--limit=N]
-  node scripts/mcp-trade.mjs buy <wallet_id> <mint> [--sol=NUM] [--exact-out --out=NUM] [--slippage=150,250,300] [--max-impact=PCT]
-  node scripts/mcp-trade.mjs sell <wallet_id> <mint> [--amount=NUM] [--pct=PCT] [--outputs=SOL,USDC] [--slippage=100,200,300] [--max-impact=PCT]
-  node scripts/mcp-trade.mjs trade <buy|sell> <wallet_id> <mint> [flags...]
+  node scripts/mcp-trade.mjs buy <wallet_id> <mint> [--sol=NUM] [--slippage=150,250,300]
+  node scripts/mcp-trade.mjs sell <wallet_id> <mint> [--amount=NUM] [--pct=PCT] [--output=SOL|USDC] [--slippage=100,200,300]
 `);
 }
 
@@ -88,39 +86,29 @@ async function main(){
   } else if (cmd === 'buy') {
     const wallet_id = argv[1]; const token_mint = argv[2];
     if (!wallet_id || !token_mint) { usage(); process.exit(1); }
-    const slippages_bps = flags.slippage ? String(flags.slippage).split(',').map(Number) : undefined;
-    if (flags.exact_out || flags.out) {
-      const out_amount_ui = Number(flags.out || 0);
-      await call('smart_buy', { wallet_id, token_mint, use_exact_out: true, out_amount_ui, slippages_bps });
-    } else {
-      const sol_amount = Number(flags.sol || 0);
-      await call('smart_buy', { wallet_id, token_mint, sol_amount, slippages_bps, max_price_impact_pct: flags.max_impact ? Number(flags.max_impact) : undefined });
-    }
+    const slippage_bps = flags.slippage ? Number(String(flags.slippage).split(',')[0]) : undefined;
+    const sol_amount = Number(flags.sol || 0);
+    if (!sol_amount || sol_amount <= 0) { console.error('buy requires --sol'); process.exit(1); }
+    // Optional preview then execute
+    await call('execute_buy_preview', { token_mint, sol_amount, slippage_bps });
+    await call('execute_buy', { wallet_id, token_mint, sol_amount, slippage_bps });
   } else if (cmd === 'sell') {
     const wallet_id = argv[1]; const token_mint = argv[2];
     if (!wallet_id || !token_mint) { usage(); process.exit(1); }
-    const outputs = flags.outputs ? String(flags.outputs).split(',') : undefined;
-    const slippages_bps = flags.slippage ? String(flags.slippage).split(',').map(Number) : undefined;
-    const token_amount = flags.amount ? Number(flags.amount) : undefined;
+    const output_mint = flags.output ? String(flags.output) : undefined;
+    const slippage_bps = flags.slippage ? Number(String(flags.slippage).split(',')[0]) : undefined;
+    let token_amount = flags.amount ? Number(flags.amount) : undefined;
     const percent_of_balance = flags.pct ? Number(flags.pct) : undefined;
-    await call('smart_sell', { wallet_id, token_mint, token_amount, percent_of_balance, outputs, slippages_bps, max_price_impact_pct: flags.max_impact ? Number(flags.max_impact) : undefined });
-  } else if (cmd === 'trade') {
-    const action = argv[1]; const wallet_id = argv[2]; const token_mint = argv[3];
-    if (!action || !wallet_id || !token_mint) { usage(); process.exit(1); }
-    const args = { action, wallet_id, token_mint };
-    if (action === 'buy') {
-      if (flags.exact_out || flags.out) { args.use_exact_out = true; args.out_amount_ui = Number(flags.out||0); }
-      else { args.sol_amount = Number(flags.sol||0); }
-      if (flags.slippage) args.slippages_bps = String(flags.slippage).split(',').map(Number);
-      if (flags.max_impact) args.max_price_impact_pct = Number(flags.max_impact);
-    } else if (action === 'sell') {
-      if (flags.amount) args.token_amount = Number(flags.amount);
-      if (flags.pct) args.percent_of_balance = Number(flags.pct);
-      if (flags.outputs) args.outputs = String(flags.outputs).split(',');
-      if (flags.slippage) args.slippages_bps = String(flags.slippage).split(',').map(Number);
-      if (flags.max_impact) args.max_price_impact_pct = Number(flags.max_impact);
+    if (!token_amount && percent_of_balance) {
+      // Resolve current balance to compute percent
+      const bals = await (await client.callTool({ name:'list_wallet_token_balances', arguments:{ wallet_id, min_ui: 0, limit: 200 } })).structuredContent;
+      const row = (bals?.items||[]).find(i => i.mint === token_mint);
+      if (!row) { console.error('sell: token not found in balances'); process.exit(1); }
+      token_amount = Number((row.amount_ui * (percent_of_balance/100)).toFixed(6));
     }
-    await call('trade', args);
+    if (!token_amount || token_amount <= 0) { console.error('sell requires --amount or --pct'); process.exit(1); }
+    await call('execute_sell_preview', { token_mint, token_amount, slippage_bps, output_mint });
+    await call('execute_sell', { wallet_id, token_mint, token_amount, slippage_bps, output_mint });
   } else {
     usage(); process.exit(1);
   }
@@ -129,4 +117,3 @@ async function main(){
 }
 
 main().catch(e => { console.error('fatal:', e?.message || e); process.exit(1); });
-

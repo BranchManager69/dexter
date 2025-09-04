@@ -40,29 +40,27 @@
 
 ## Trading Quick Start (MCP)
 
-Use MCP tools to buy/sell from managed wallets with simple, robust helpers.
+Use MCP tools to buy/sell from managed wallets using explicit preview/execute flows.
 
 - List balances for a wallet:
   - name: `list_wallet_token_balances`
   - args: `{ wallet_id: "<WALLET_ID>", min_ui: 0.000001, limit: 10 }`
 
-- Smart buy (ExactIn):
-  - name: `smart_buy`
-  - args: `{ wallet_id: "<WALLET_ID>", token_mint: "<MINT>", sol_amount: 0.0005, slippages_bps: [150,250,300] }`
+- Preview buy:
+  - name: `execute_buy_preview`
+  - args: `{ token_mint: "<MINT>", sol_amount: 0.0005, slippage_bps: 150 }`
 
-- Smart buy (ExactOut):
-  - name: `smart_buy`
-  - args: `{ wallet_id: "<WALLET_ID>", token_mint: "<MINT>", use_exact_out: true, out_amount_ui: 0.1 }`
+- Execute buy:
+  - name: `execute_buy`
+  - args: `{ wallet_id: "<WALLET_ID>", token_mint: "<MINT>", sol_amount: 0.0005, slippage_bps: 150 }`
 
-- Smart sell (robust):
-  - name: `smart_sell`
-  - args: `{ wallet_id: "<WALLET_ID>", token_mint: "<MINT>", percent_of_balance: 10, outputs: ["So11111111111111111111111111111111111111112","EPjFWdd5AufqSSqeM2qN1xzyXH8m9GZ4HCS4ZLxLtZ8"], slippages_bps: [100,200,300], max_price_impact_pct: 1.0 }`
+- Preview sell:
+  - name: `execute_sell_preview`
+  - args: `{ token_mint: "<MINT>", token_amount: 0.1, slippage_bps: 200, output_mint: "So1111…12" }`
 
-- Unified trade (buy/sell):
-  - name: `trade`
-  - args: `{ action: "buy", wallet_id: "<WALLET_ID>", token_mint: "<MINT>", sol_amount: 0.0003 }`
-  - name: `trade`
-  - args: `{ action: "sell", wallet_id: "<WALLET_ID>", token_mint: "<MINT>", percent_of_balance: 10 }`
+- Execute sell:
+  - name: `execute_sell`
+  - args: `{ wallet_id: "<WALLET_ID>", token_mint: "<MINT>", token_amount: 0.1, slippage_bps: 200, output_mint: "So1111…12" }`
 
 See `mcp/README.md` → Trading Tools for full details.
 
@@ -497,18 +495,14 @@ Output locations:
 
 ---
 
-## PM2 Deployment (Monorepo)
+## Systemd Deployment (Dexter)
 
-- Ecosystem file resides at the parent root: `../ecosystem.config.cjs` (gitignored).
-- Managed processes touching this folder:
-  - `ai-ui`: runs `token-ai/server.js` (agent dashboard/live UI).
-  - `tg-daemon`: runs `token-ai/socials/telegram/session-daemon.js`.
-- `token-ai-mcp-http`: runs the OAuth MCP server at `mcp/http-server-oauth.mjs` (unified `/mcp`).
-  - Fallback (bearer‑only): `mcp/http-server.mjs` if you don’t need OAuth.
-- Legacy SSE variant for ChatGPT is archived at `mcp/_archive/http-server-chatgpt.mjs`. Dexter uses `mcp/http-server-oauth.mjs` under `/mcp` for both JSON and streaming.
-  - ChatGPT connector setup: see `docs/mcp-connector-setup.md` (unified `/mcp`).
-- Common ops: `pm2 reload ai-ui`, `pm2 restart tg-daemon --update-env`, `pm2 status`, `pm2 logs <name> --lines 100`.
-- Details and environment variables: see `AGENTS.md` → “PM2 + Monorepo Deployment”.
+- Services: `dexter-ui` (UI/API/WS) and `dexter-mcp` (MCP HTTP)
+- Start/Stop/Restart: `sudo systemctl start|stop|restart dexter-ui dexter-mcp`
+- Status: `systemctl status dexter-ui` / `systemctl status dexter-mcp`
+- Logs: `sudo journalctl -u dexter-ui -f` / `sudo journalctl -u dexter-mcp -f`
+- Nginx reload: `sudo nginx -t && sudo systemctl reload nginx`
+- MCP connector setup: see `token-ai/mcp/README.md`
 
 ---
 
