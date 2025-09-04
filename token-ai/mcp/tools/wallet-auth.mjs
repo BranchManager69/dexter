@@ -338,7 +338,7 @@ export function registerWalletAuthTools(server) {
       }
       const { randomBytes, createCipheriv } = await import('node:crypto');
       const { Keypair } = await import('@solana/web3.js');
-      const { default: { v4: uuidv4 } } = await import('uuid');
+      const { v4: uuidv4 } = await import('uuid');
       const kp = Keypair.generate();
       const seed32 = Buffer.from(kp.secretKey).subarray(0, 32);
       const encKeyHex = process.env.WALLET_ENCRYPTION_KEY || '';
