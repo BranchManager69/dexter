@@ -18,6 +18,9 @@ import { registerOhlcvTools } from './tools/ohlcv.mjs';
 import { registerSocialsOrchestrateTools } from './tools/socials-orchestrate.mjs';
 import { registerSocialsDataTools } from './tools/socials-data.mjs';
 import { registerTradingTools } from './tools/trading.mjs';
+import { registerPredictionTools } from './tools/predictions.mjs';
+import { registerFoundationTools } from './tools/foundation.mjs';
+import { registerWalletExtraTools } from './tools/wallet-extra.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TOKEN_AI_DIR = path.resolve(HERE, '..');
@@ -107,6 +110,10 @@ export function buildMcpServer(options = {}){
     registerSocialsDataTools(server);
   }
   if (want('trading')) registerTradingTools(server);
+  if (want('trading')) registerWalletExtraTools(server);
+  // Predictions and DB foundation helpers are broadly useful; include under 'web' or 'reports'
+  if (want('web') || want('reports')) registerPredictionTools(server);
+  if (want('web') || want('reports')) registerFoundationTools(server);
   if (want('runs') && ENABLE_RUN_TOOLS) {
     // registerAgentRunTools already handled above; add orchestrate aggregator
     registerSocialsOrchestrateTools(server);

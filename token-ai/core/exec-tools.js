@@ -20,18 +20,8 @@ import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
 import fetch from 'node-fetch';
-import axios from 'axios';
-// Lazy-load prisma only when needed to avoid dragging parent config/loggers in simple tool paths
-let _prisma = null;
-async function getPrisma(){
-  if (_prisma) return _prisma;
-  try {
-    const mod = await import('../../config/prisma.js');
-    _prisma = mod?.default || mod?.prisma || null;
-  } catch {}
-  return _prisma;
-}
-import { spawn } from 'child_process';
+// axios no longer used here; MCP handles network calls
+// No longer using local DB or child processes from exec-tools
 // Foundation utilities are heavy (db + config); lazy-load inside handlers when needed
 import { ToolsAdapter } from './tools-adapter.mjs';
 // Website/Twitter/Telegram/Market tools now proxied via MCP
@@ -47,7 +37,7 @@ async function getWalletUtils(){
 import { registerTool, registerLazyTool, hasTool, getTool as getRegisteredTool } from './tools-registry.js';
 import { isBase58Mint, isHttpUrl } from './validation.js';
 
-import { fetchBirdeyeOHLCVRange } from './ohlcv-util.js';
+// OHLCV handled via MCP; fast util no longer used here
 import { executeSellInternal, getQuoteSafe } from '../trade-manager/exec-helpers.js';
 
 
@@ -274,110 +264,14 @@ export function createToolExecutor(config) {
         } catch (e) { return { error: 'Failed to resolve symbol to mints', details: e?.message }; }
       });
     }
-    // Prediction verification (relative)
+    // Prediction verification (relative) via MCP
     if (!hasTool('verify_relative_prediction')) {
       registerTool('verify_relative_prediction', async (args) => {
         try {
-          const { tweet_id, window_minutes = 1440, claim = {}, targets = [], target_kind = 'mint', chain_id = 'solana' } = args;
-          const chain = String(chain_id || 'solana').toLowerCase();
-          if (!tweet_id) return { error: 'tweet_id is required' };
-          const windowMin = Math.min(Math.max(Number(window_minutes)||1440, 60), 20160);
-
-          const prisma = await getPrisma();
-          const row = await prisma.twitter_tweets.findFirst({ where: { tweet_id } });
-          if (!row) return { error: `Tweet ${tweet_id} not found` };
-          const ts = row.tweet_timestamp || row.created_at;
-          if (!ts) return { error: 'Tweet has no timestamp' };
-          const tweetTs = Math.floor(new Date(ts).getTime()/1000);
-          const now = Math.floor(Date.now()/1000);
-          const endTs = Math.min(tweetTs + windowMin*60, now);
-          const actualMin = Math.floor((endTs - tweetTs)/60);
-          if (actualMin < 60) return { result: 'too_fresh', min_required_minutes: 60, current_minutes: actualMin };
-
-          let mints = [];
-          if (Array.isArray(targets) && targets.length) {
-            if (String(target_kind||'mint').toLowerCase() === 'mint') {
-              mints = targets.filter(Boolean);
-            } else {
-              const symArr = targets.filter(Boolean);
-              const resolved = [];
-              for (const sym of symArr) {
-                try {
-                  const url = 'https://api.dexscreener.com/latest/dex/search';
-                  const sresp = await axios.get(url, { params: { q: sym }, timeout: 10000 });
-                  const pairs = Array.isArray(sresp.data?.pairs) ? sresp.data.pairs : [];
-                  const sol = pairs.filter(p => (p.chainId||'').toLowerCase() === chain);
-                  const cand = new Map();
-                  const push = (tok, role, p) => { if (!tok?.address) return; const k = tok.address.toLowerCase(); const rec = cand.get(k)||{addr:tok.address,sym:(tok.symbol||'').toUpperCase(),liq:0,ev:0,roles:new Set()}; const liq=Number(p.liquidity?.usd||0)||0; rec.liq += liq; rec.ev++; rec.roles.add(role); cand.set(k,rec); };
-                  for (const p of sol) { const b = p.baseToken || p.base; const q = p.quoteToken || p.quote; if (b) push(b,'base',p); if (q) push(q,'quote',p); }
-                  const target = (sym||'').toUpperCase();
-                  const list = Array.from(cand.values()).map(c=>({ address:c.addr, sym:c.sym, score: (c.sym===target?1000: (c.sym.includes(target)?200:0)) + Math.log10(1+c.liq)*20 + (c.roles.has('base')?10:0) + c.ev*5 })).filter(x => x.sym!=='SOL' && x.sym!=='USDC' && x.sym!=='USDT').sort((a,b)=>b.score-a.score);
-                  if (list.length) resolved.push(list[0].address);
-                } catch {}
-              }
-              mints = resolved;
-            }
-          }
-          if (!mints || mints.length < 2) return { error: 'Need at least two mint_addresses or resolvable symbols' };
-
-          let interval = 1; if (actualMin > 360) interval = 5; if (actualMin > 2880) interval = 15;
-
-          const rows = [];
-          for (const mint of mints) {
-            const data = await fetchBirdeyeOHLCVRange(mint, tweetTs, endTs, interval);
-            if (!data || !Array.isArray(data.ohlcv) || data.ohlcv.length === 0) { rows.push({ mint, error: 'no_ohlcv' }); continue; }
-            const o = data.ohlcv;
-            const start = o[0].c; const end = o[o.length-1].c;
-            const maxH = Math.max(...o.map(c=>c.h)); const minL = Math.min(...o.map(c=>c.l));
-            const changePct = ((end - start)/start)*100;
-            rows.push({ mint, interval_minutes: interval, price_start: start, price_end: end, return_pct: Number(changePct.toFixed(2)), max_price: maxH, min_price: minL, candles: o.length });
-          }
-
-          const valid = rows.filter(r => r.error == null);
-          const ranked = valid.slice().sort((a,b)=> (b.return_pct - a.return_pct));
-
-          const ctype = (claim.type||'outperform');
-          const primaryIdx = Number.isInteger(args.primary_index) ? args.primary_index : (Number.isInteger(claim.primary_index) ? claim.primary_index : 0);
-          const againstIdx = Number.isInteger(args.against_index) ? args.against_index : (Number.isInteger(claim.against_index) ? claim.against_index : (mints.length>1?1:0));
-          let verdict = 'insufficient_data'; let accuracy = 0;
-          if (valid.length >= 2) {
-            const primaryMint = mints[primaryIdx] || mints[0];
-            const primary = valid.find(v => v.mint === primaryMint) || ranked[0];
-            const againstMint = mints[againstIdx] || mints[(primaryIdx+1)%mints.length];
-            const against = valid.find(v => v.mint === againstMint) || ranked[1];
-            if (primary && against) {
-              const diff = primary.return_pct - against.return_pct;
-              if (ctype === 'outperform') { verdict = diff >= 0 ? 'CORRECT' : 'WRONG'; accuracy = Math.max(0, Math.min(100, diff + 50)); }
-              else if (ctype === 'underperform') { verdict = diff <= 0 ? 'CORRECT' : 'WRONG'; accuracy = Math.max(0, Math.min(100, -diff + 50)); }
-              else if (ctype === 'spread_target') { const th = Number(args.threshold_pct ?? claim.threshold_pct ?? 0); verdict = diff >= th ? 'CORRECT' : 'WRONG'; accuracy = Math.max(0, Math.min(100, 50 + (diff-th))); }
-              else if (ctype === 'ratio_target') { verdict = 'UNSUPPORTED'; accuracy = 0; }
-            }
-          }
-
-          let saved = false; let dbError = null;
-          try {
-            const prisma = await getPrisma();
-            await prisma.tweet_prediction_scores.create({
-              data: {
-                tweet_id,
-                token_address: mints[0],
-                author_handle: row.author_handle || 'unknown',
-                tweet_timestamp: row.tweet_timestamp || row.created_at,
-                prediction_type: `relative_${ctype}`,
-                prediction_text: `${ctype}:${mints.join(',')}`,
-                minutes_checked: actualMin,
-                price_before: null,
-                price_after: null,
-                price_change_pct: null,
-                accuracy_score: Math.round(accuracy),
-                verdict,
-                metadata: { chain_id: chain, mints, returns: valid, ranked_mints: ranked.map(r=>({ mint:r.mint, return_pct:r.return_pct })), interval_minutes: interval, window_minutes: actualMin }
-              }
-            });
-            saved = true;
-          } catch (e) { dbError = e?.message || String(e); }
-
-          return { tweet_id, chain_id: chain, window_minutes: actualMin, interval_minutes: interval, claim_type: ctype, mints, returns: rows, ranked, verdict, accuracy_score: Math.round(accuracy), saved_to_database: saved, ...(dbError && { db_error: dbError }) };
+          if (!(mcpEnabled && toolsAdapter)) return { error: 'mcp_disabled' };
+          const res = await toolsAdapter.mcp.callTool({ name:'verify_relative_prediction', arguments: args || {} });
+          if (res.isError) return { error: 'verify_relative_prediction_failed', details: res?.content?.[0]?.text || null };
+          return res.structuredContent || res;
         } catch (e) { return { error: `Failed to verify relative prediction: ${e.message}` }; }
       });
     }
@@ -402,47 +296,16 @@ export function createToolExecutor(config) {
         return res.structuredContent || res;
       });
     }
-    // Twitter history from DB (no scraping)
+    // Twitter history via MCP (no scraping)
     if (!hasTool('get_twitter_history')) {
       registerTool('get_twitter_history', async (args) => {
         try {
           if (!isBase58Mint(args.mint_address)) return { error: 'Invalid mint address', mint_address: args.mint_address };
-          const limit = Math.min(Math.max(Number(args.limit || 100), 1), 500);
-          const include_replies = args.include_replies !== false;
-          const include_retweets = args.include_retweets !== false;
-          const include_deleted = args.include_deleted !== false;
-          const include_snapshots = args.include_snapshots !== false;
-          const snapshots_limit = Math.min(Math.max(Number(args.snapshots_limit || 20), 1), 200);
-          let sinceTime = null;
-          if (args.since_time) { const d = new Date(String(args.since_time)); if (!isNaN(d.getTime())) sinceTime = d; }
-          if (!sinceTime && args.since_days) { const days = Number(args.since_days); if (Number.isFinite(days) && days > 0) sinceTime = new Date(Date.now() - days*86400_000); }
-
-          const where = { token_address: args.mint_address };
-          if (!include_replies) where.is_reply = false;
-          if (!include_retweets) where.is_retweet = false;
-          if (!include_deleted) where.deleted_at = null;
-          if (args.author) where.author_handle = String(args.author);
-          if (sinceTime) where.tweet_timestamp = { gte: sinceTime };
-
-          const prisma = await getPrisma();
-          const tweets = await prisma.twitter_tweets.findMany({ where, orderBy: { tweet_timestamp: 'desc' }, take: limit });
-          let snapshots = [];
-          if (include_snapshots) {
-            const whereSnap = { token_address: args.mint_address };
-            if (sinceTime) whereSnap.snapshot_time = { gte: sinceTime };
-            try {
-              const prisma = await getPrisma();
-              snapshots = await prisma.twitter_snapshots.findMany({ where: whereSnap, orderBy: { snapshot_time: 'desc' }, take: snapshots_limit });
-            } catch {
-              const prisma = await getPrisma();
-              snapshots = await prisma.twitter_snapshots.findMany({ where: { token_address: args.mint_address }, take: snapshots_limit });
-            }
-          }
-          const safe = (obj) => JSON.parse(JSON.stringify(obj, (_k, v) => typeof v === 'bigint' ? v.toString() : v));
-          return { mint_address: args.mint_address, count: tweets.length, tweets: safe(tweets), snapshots: safe(snapshots) };
-        } catch (e) {
-          return { error: 'Failed to load twitter history', details: e?.message, mint_address: args.mint_address };
-        }
+          if (!(mcpEnabled && toolsAdapter)) return { error: 'mcp_disabled' };
+          const res = await toolsAdapter.mcp.callTool({ name:'get_twitter_history', arguments: args || {} });
+          if (res.isError) return { error: 'get_twitter_history_failed', details: res?.content?.[0]?.text || null };
+          return res.structuredContent || res;
+        } catch (e) { return { error: 'Failed to load twitter history', details: e?.message, mint_address: args.mint_address }; }
       });
     }
     // Trading: wallets and balances
@@ -486,11 +349,10 @@ export function createToolExecutor(config) {
     if (!hasTool('get_wallet_holdings')) {
       registerTool('get_wallet_holdings', async (args) => {
         try {
-          const apiUrl = process.env.API_BASE_URL || 'http://localhost:3004';
-          const response = await fetch(`${apiUrl}/api/wallet-analysis/${args.wallet_address}`);
-          if (!response.ok) throw new Error(`API returned ${response.status}: ${response.statusText}`);
-          const data = await response.json();
-          return { success: true, wallet_address: args.wallet_address, sol_balance: data.summary?.solBalance?.sol || 0, total_value_usd: data.portfolio?.totalValue || 0, tokens: data.tokens?.map(t => ({ symbol: t.symbol, name: t.name, mint: t.mint, balance: t.balance, value_usd: t.value, price: t.price, market_cap: t.marketCap, liquidity: t.realQuoteLiquidity })) || [], token_count: data.tokens?.length || 0 };
+          if (!(mcpEnabled && toolsAdapter)) return { error: 'mcp_disabled' };
+          const res = await toolsAdapter.mcp.callTool({ name:'get_wallet_holdings', arguments: { wallet_address: args.wallet_address } });
+          if (res.isError) return { error: 'wallet_holdings_failed', details: res?.content?.[0]?.text || null };
+          return res.structuredContent || res;
         } catch (e) { return { error: `Failed to get wallet holdings: ${e.message}` }; }
       });
     }
@@ -685,210 +547,77 @@ export function createToolExecutor(config) {
         } catch (e) { return { error: 'Failed to orchestrate modular socials', details: e?.message, mint_address: args.mint_address }; }
       });
     }
-    // Foundation (DB/admin) — lazy to avoid pulling prisma/API paths unless called
+    // Foundation (DB/admin) — via MCP
     if (!hasTool('ensure_token_activated')) {
-      registerLazyTool('ensure_token_activated', async () => async (args) => {
+      registerTool('ensure_token_activated', async (args) => {
         try {
           const mint = String(args?.mint_address || args?.mint || '').trim();
           if (!isBase58Mint(mint)) return { error: 'Invalid mint address', mint_address: mint };
-          const { ensure_token_activated } = await import('../socials/tools/foundation.js');
-          return await ensure_token_activated(mint);
+          if (!(mcpEnabled && toolsAdapter)) return { error: 'mcp_disabled' };
+          const res = await toolsAdapter.mcp.callTool({ name:'ensure_token_activated', arguments: { mint_address: mint } });
+          if (res.isError) return { error: 'ensure_token_activated_failed', details: res?.content?.[0]?.text || null };
+          return res.structuredContent || res;
         } catch (e) { return { error: 'ensure_token_activated_failed', details: e?.message || String(e) }; }
       });
     }
     if (!hasTool('ensure_token_enriched')) {
-      registerLazyTool('ensure_token_enriched', async () => async (args) => {
+      registerTool('ensure_token_enriched', async (args) => {
         try {
           const mint = String(args?.mint_address || args?.mint || '').trim();
           if (!isBase58Mint(mint)) return { error: 'Invalid mint address', mint_address: mint };
-          const timeoutSec = Math.min(Math.max(Number(args?.timeout_sec ?? 30), 0), 180);
-          const poll = args?.poll !== false;
-          const { ensure_token_enriched } = await import('../socials/tools/foundation.js');
-          return await ensure_token_enriched(mint, { timeoutSec, poll });
+          if (!(mcpEnabled && toolsAdapter)) return { error: 'mcp_disabled' };
+          const timeout_sec = Math.min(Math.max(Number(args?.timeout_sec ?? 30), 0), 180);
+          const res = await toolsAdapter.mcp.callTool({ name:'ensure_token_enriched', arguments: { mint_address: mint, timeout_sec, poll: args?.poll !== false } });
+          if (res.isError) return { error: 'ensure_token_enriched_failed', details: res?.content?.[0]?.text || null };
+          return res.structuredContent || res;
         } catch (e) { return { error: 'ensure_token_enriched_failed', details: e?.message || String(e) }; }
       });
     }
     if (!hasTool('get_token_links_from_db')) {
-      registerLazyTool('get_token_links_from_db', async () => async (args) => {
+      registerTool('get_token_links_from_db', async (args) => {
         try {
           const mint = String(args?.mint_address || args?.mint || '').trim();
           if (!isBase58Mint(mint)) return { error: 'Invalid mint address', mint_address: mint };
-          const { get_token_links_from_db } = await import('../socials/tools/foundation.js');
-          return await get_token_links_from_db(mint);
+          if (!(mcpEnabled && toolsAdapter)) return { error: 'mcp_disabled' };
+          const res = await toolsAdapter.mcp.callTool({ name:'get_token_links_from_db', arguments: { mint_address: mint } });
+          if (res.isError) return { error: 'get_token_links_from_db_failed', details: res?.content?.[0]?.text || null };
+          return res.structuredContent || res;
         } catch (e) { return { error: 'get_token_links_from_db_failed', details: e?.message || String(e) }; }
       });
     }
   } catch {}
 
-  // Register DB-backed tweet media extractor
+  // Tweet media now via MCP
   if (!hasTool('get_media_from_tweet')) {
     registerTool('get_media_from_tweet', async (args) => {
       try {
-        const { tweet_id, include_metadata = true } = args;
-        const prisma = await getPrisma();
-        const tweetRow = await prisma.twitter_tweets.findFirst({ where: { tweet_id } });
-        if (!tweetRow) return { error: `Tweet ${tweet_id} not found in database` };
-        const t = canonicalTweetFromRow(tweetRow);
-        const mediaData = t.media || {};
-        const media = { photos: Array.isArray(mediaData.photos) ? mediaData.photos : [], videos: Array.isArray(mediaData.videos) ? mediaData.videos : [], cards: Array.isArray(mediaData.cards) ? mediaData.cards : [] };
-        const hasMedia = media.photos.length > 0 || media.videos.length > 0 || media.cards.length > 0;
-        if (!hasMedia) {
-          return { tweet_id, message: 'No media found in this tweet', metadata: include_metadata ? { text: t.text, author: t.author, stats: t.counts, created_at: t.timestamp } : null };
-        }
-        const response = {
-          tweet_id,
-          media: {
-            image_urls: media.photos.map(p => p.url).filter(Boolean),
-            video_urls: media.videos.map(v => ({ url: v.url, poster: v.poster })).filter(v => v.url),
-            card_previews: media.cards.map(c => ({ url: c.url, image: c.image })).filter(c => c.url)
-          },
-          media_count: { images: media.photos.length, videos: media.videos.length, cards: media.cards.length }
-        };
-        if (include_metadata) response.metadata = { text: t.text, author: t.author, stats: t.counts, created_at: t.timestamp, url: t.url };
-        return response;
+        if (!(mcpEnabled && toolsAdapter)) return { error: 'mcp_disabled' };
+        const res = await toolsAdapter.mcp.callTool({ name:'get_media_from_tweet', arguments: { tweet_id: args.tweet_id, include_metadata: args.include_metadata } });
+        if (res.isError) return { error: 'get_media_from_tweet_failed', details: res?.content?.[0]?.text || null };
+        return res.structuredContent || res;
       } catch (e) { return { error: `Failed to get media from tweet: ${e.message}` }; }
     });
   }
-  // Prediction history
+  // Prediction history via MCP
   if (!hasTool('get_prediction_history')) {
     registerTool('get_prediction_history', async (args) => {
       try {
-        const { token_address, author_handle, limit = 20, min_accuracy, prediction_type, order_by = 'created_at_desc' } = args;
-        const where = {};
-        if (token_address) where.token_address = token_address;
-        if (author_handle) where.author_handle = author_handle;
-        if (min_accuracy !== undefined) where.accuracy_score = { gte: min_accuracy };
-        if (prediction_type) where.prediction_type = prediction_type;
-        let orderBy;
-        switch(order_by) {
-          case 'accuracy_desc': orderBy = { accuracy_score: 'desc' }; break;
-          case 'accuracy_asc': orderBy = { accuracy_score: 'asc' }; break;
-          case 'created_at_asc': orderBy = { created_at: 'asc' }; break;
-          default: orderBy = { created_at: 'desc' };
-        }
-        const prisma = await getPrisma();
-        const predictions = await prisma.tweet_prediction_scores.findMany({ where, orderBy, take: limit });
-        if (!predictions || predictions.length === 0) return { message: 'No prediction history found for the given criteria', count: 0, predictions: [] };
-        let authorStats = null;
-        if (author_handle) {
-          const allAuthorPredictions = await prisma.tweet_prediction_scores.findMany({ where: { author_handle } });
-          if (allAuthorPredictions.length > 0) {
-            const accuracySum = allAuthorPredictions.reduce((sum, p) => sum + p.accuracy_score, 0);
-            const avgAccuracy = accuracySum / allAuthorPredictions.length;
-            const correctPredictions = allAuthorPredictions.filter(p => p.accuracy_score >= 50).length;
-            const successRate = (correctPredictions / allAuthorPredictions.length) * 100;
-            authorStats = { total_predictions: allAuthorPredictions.length, average_accuracy: avgAccuracy.toFixed(1), success_rate: successRate.toFixed(1), pump_predictions: allAuthorPredictions.filter(p => p.prediction_type === 'pump').length, dump_predictions: allAuthorPredictions.filter(p => p.prediction_type === 'dump').length, price_target_predictions: allAuthorPredictions.filter(p => p.prediction_type === 'target_price').length };
-          }
-        }
-        const formattedPredictions = predictions.map(p => {
-          const pcp = (p.price_change_pct == null) ? null : Number(p.price_change_pct);
-          return { tweet_id: p.tweet_id, author: p.author_handle, prediction_type: p.prediction_type, prediction_text: p.prediction_text, accuracy_score: p.accuracy_score, verdict: p.verdict, price_change_pct: (pcp == null || Number.isNaN(pcp)) ? null : Number(pcp.toFixed(2)), minutes_checked: p.minutes_checked, tweet_timestamp: p.tweet_timestamp, verified_at: p.created_at, token_address: p.token_address };
-        });
-        return { count: predictions.length, predictions: formattedPredictions, ...(authorStats && { author_statistics: authorStats }) };
+        if (!(mcpEnabled && toolsAdapter)) return { error: 'mcp_disabled' };
+        const res = await toolsAdapter.mcp.callTool({ name:'get_prediction_history', arguments: args || {} });
+        if (res.isError) return { error: 'get_prediction_history_failed', details: res?.content?.[0]?.text || null };
+        return res.structuredContent || res;
       } catch (e) { return { error: `Failed to retrieve prediction history: ${e.message}` }; }
     });
   }
 
-  // Verify tweet prediction (single-token pump/dump/target)
+  // Verify tweet prediction via MCP
   if (!hasTool('verify_tweet_prediction')) {
     registerTool('verify_tweet_prediction', async (args) => {
       try {
-        const { tweet_id, minutes_after = 1440, prediction_type = 'auto_detect' } = args;
-        const prisma = await getPrisma();
-        const tweetRow = await prisma.twitter_tweets.findFirst({ where: { tweet_id } });
-        if (!tweetRow) return { error: `Tweet ${tweet_id} not found in database` };
-
-        const tw = canonicalTweetFromRow(tweetRow);
-        if (!tw?.timestamp) return { error: 'Tweet missing timestamp for verification' };
-
-        const mintAddress = (args.mint_address && String(args.mint_address)) || tw.token_address || null;
-        if (!mintAddress) return { result: 'not_associated', message: 'No mint address associated with this tweet; pass mint_address to verify.', tweet_id };
-
-        const tweetTimestamp = Math.floor(tw.timestamp.getTime() / 1000);
-        const endTimestamp = tweetTimestamp + (minutes_after * 60);
-        const nowTimestamp = Math.floor(Date.now() / 1000);
-        const actualEndTime = Math.min(endTimestamp, nowTimestamp);
-        const actualMinutes = Math.floor((actualEndTime - tweetTimestamp) / 60);
-        if (actualMinutes < 60) return { tweet_id, result: 'too_fresh', min_required_minutes: 60, current_minutes: actualMinutes, message: 'Tweet is too recent to verify prediction reliably.' };
-
-        const text = (tw.text || '').toLowerCase();
-        let detectedClaim = null; let expectedDirection = null; let targetPrice = null;
-        const claims = Array.isArray(args.claims) && args.claims.length ? args.claims : null;
-        const single = (!claims && args.prediction_details) ? args.prediction_details : null;
-        if (single) {
-          if (single.direction === 'up') { expectedDirection = 'up'; detectedClaim = 'pump'; }
-          if (single.direction === 'down') { expectedDirection = 'down'; detectedClaim = 'dump'; }
-          if (typeof single.target_price === 'number') { targetPrice = Number(single.target_price); detectedClaim = `target $${targetPrice}`; }
-        }
-        if (!single && !claims) {
-          if (prediction_type === 'auto_detect' || prediction_type === 'pump') {
-            if (/(pump|moon|explode|fly|rocket|parabolic|10x|100x|send it|lfg)/i.test(text)) { detectedClaim = 'pump'; expectedDirection = 'up'; }
-          }
-          if (prediction_type === 'auto_detect' || prediction_type === 'dump') {
-            if (/(dump|crash|tank|rug|collapse|plummet|die|dead|zero|rekt)/i.test(text)) { detectedClaim = 'dump'; expectedDirection = 'down'; }
-          }
-          if (prediction_type === 'auto_detect' || prediction_type === 'target_price') {
-            const m = text.match(/\$\s*([0-9]+(?:\.[0-9]+)?)/);
-            if (m) { targetPrice = Number(m[1]); detectedClaim = `target $${targetPrice}`; }
-          }
-        }
-
-        const interval = actualMinutes <= 360 ? 1 : (actualMinutes <= 2880 ? 5 : 15);
-        const data = await fetchBirdeyeOHLCVRange(mintAddress, tweetTimestamp, actualEndTime, interval);
-        if (!data || !Array.isArray(data.ohlcv) || data.ohlcv.length === 0) return { error: 'No OHLCV data available', tweet_id, mint_address: mintAddress };
-        const ohlcv = data.ohlcv;
-        const startPrice = ohlcv[0].c; const endPrice = ohlcv[ohlcv.length - 1].c;
-        const maxPrice = Math.max(...ohlcv.map(c => c.h)); const minPrice = Math.min(...ohlcv.map(c => c.l));
-        const changePercent = ((endPrice - startPrice) / startPrice) * 100;
-        const maxChangePercent = ((maxPrice - startPrice) / startPrice) * 100;
-        const minChangePercent = ((minPrice - startPrice) / startPrice) * 100;
-
-        let verdict = 'unknown'; let accuracy = 0;
-        if (expectedDirection === 'up') { verdict = changePercent >= 0 ? 'CORRECT' : 'WRONG'; accuracy = Math.max(0, Math.min(100, changePercent + 50)); }
-        else if (expectedDirection === 'down') { verdict = changePercent <= 0 ? 'CORRECT' : 'WRONG'; accuracy = Math.max(0, Math.min(100, -changePercent + 50)); }
-        else if (targetPrice != null) { verdict = (maxPrice >= targetPrice) ? 'CORRECT' : 'WRONG'; const proximity = (maxPrice - targetPrice) / targetPrice; accuracy = Math.max(0, Math.min(100, 50 + proximity * 100)); }
-        else { verdict = 'no_claim_detected'; accuracy = 0; }
-
-        let savedToDb = false; let dbError = null;
-        try {
-          const prisma = await getPrisma();
-          await prisma.tweet_prediction_scores.create({
-            data: {
-              tweet_id,
-              token_address: mintAddress,
-              author_handle: tw.author?.handle || tweetRow.author_handle || 'unknown',
-              tweet_timestamp: tweetRow.tweet_timestamp || tw.timestamp,
-              prediction_type: detectedClaim?.includes('target') ? 'target_price' : expectedDirection === 'up' ? 'pump' : 'dump',
-              prediction_text: detectedClaim || (single ? (single.direction || (single.target_price ? `target $${single.target_price}` : null)) : null),
-              target_price: targetPrice,
-              minutes_checked: actualMinutes,
-              price_before: startPrice,
-              price_after: endPrice,
-              price_change_pct: changePercent,
-              volume_before: (ohlcv[0].v ?? null),
-              volume_after: (ohlcv[ohlcv.length - 1].v ?? null),
-              accuracy_score: Math.round(accuracy),
-              verdict,
-              metadata: { max_price: maxPrice, min_price: minPrice, max_change_pct: maxChangePercent, min_change_pct: minChangePercent, candles_analyzed: ohlcv.length }
-            }
-          });
-          savedToDb = true;
-        } catch (error) { console.error('Failed to save prediction score to database:', error); dbError = error.message; }
-
-        return {
-          tweet_id,
-          tweet_text: (tw.text || '').substring(0,200),
-          author: tw.author,
-          claim_detected: detectedClaim,
-          tweet_timestamp: tw.timestamp,
-          verification_period: { minutes_checked: actualMinutes, end_time: new Date(actualEndTime * 1000).toISOString() },
-          price_data: { price_at_tweet: startPrice, price_at_end: endPrice, max_price_in_period: maxPrice, min_price_in_period: minPrice, change_percent: Number(changePercent.toFixed(2)), max_change_percent: Number(maxChangePercent.toFixed(2)), min_change_percent: Number(minChangePercent.toFixed(2)) },
-          accuracy_score: Math.round(accuracy),
-          verdict,
-          token_address: mintAddress,
-          saved_to_database: savedToDb,
-          ...(dbError && { db_error: dbError })
-        };
+        if (!(mcpEnabled && toolsAdapter)) return { error: 'mcp_disabled' };
+        const res = await toolsAdapter.mcp.callTool({ name:'verify_tweet_prediction', arguments: args || {} });
+        if (res.isError) return { error: 'verify_tweet_prediction_failed', details: res?.content?.[0]?.text || null };
+        return res.structuredContent || res;
       } catch (e) { return { error: `Failed to verify tweet prediction: ${e.message}` }; }
     });
   }

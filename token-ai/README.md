@@ -640,14 +640,16 @@ Quick test command (shows the logs above):
 
 ---
 
-## 🚀 Autonomous Trading Execution (NEW)
+## MCP‑Only Tools and Autonomous Trading
 
 ### Overview
 Clanka AI now includes native, autonomous trading capabilities through integrated Jupiter DEX tools. The agent can execute real mainnet trades directly from its decision-making pipeline, transforming analysis into action.
 
 ### Trading Tools Available
 
-The agent has access to 6 core trading functions via `tools.js` and `exec-tools.js`:
+The agent calls tools via a thin MCP proxy in `core/exec-tools.js`. All networking, DB, and subprocess work happens inside the MCP server. Trading and research run through MCP only.
+
+### Core Trading Functions
 
 1. **`list_managed_wallets`** - Returns all available trading wallets from the managed_wallets table
 2. **`get_wallet_balance`** - Checks SOL and token balances for any managed wallet  
@@ -656,19 +658,35 @@ The agent has access to 6 core trading functions via `tools.js` and `exec-tools.
 5. **`execute_sell`** - Sells tokens back to SOL (partial or full balance)
 6. **`get_transaction_status`** - Verifies transaction confirmation status
 
+### Research/Predictions/DB (via MCP)
+
+- Websites: `extract_website_content`, `extract_websites_for_token`, `discover_official_links`
+- Market data: `fetch_market_overview`, `analyze_token_ohlcv_range`
+- Socials orchestrator: `socials_orchestrate`
+- Twitter scraping: `get_twitter_profile`, `get_twitter_recent_tweets`, `get_twitter_community_meta`, `get_twitter_community_posts`, `get_twitter_community_members`
+- Predictions & DB: `get_twitter_history`, `get_media_from_tweet`, `get_prediction_history`, `verify_tweet_prediction`, `verify_relative_prediction`, `ensure_token_activated`, `ensure_token_enriched`, `get_token_links_from_db`
+- Wallet analysis: `get_wallet_holdings`
+
+Structured errors returned by MCP (examples):
+- `{ error: 'db_unavailable' }`
+- `{ error: 'tweet_not_found', tweet_id }`
+- `{ error: 'missing_birdeye_api_key' }`, `{ error: 'no_ohlcv_data' }`
+
 ### Technical Implementation
 
-**Architecture:**
+**Architecture (MCP‑only):**
 ```
 Agent Decision Layer
         ↓
-Tool Executor (exec-tools.js)
+Tool Executor (core/exec-tools.js → MCP proxy)
         ↓
-Trade Manager (trade-manager/)
-        ├── wallet-utils.js     (Wallet decryption & management)
-        └── jupiter-api.js      (Jupiter DEX integration)
-                ↓
-        Solana Mainnet TX
+MCP Server (mcp/common.mjs)
+  ├── tools/trading.mjs
+  ├── tools/websites.mjs, tools/dexscreener.mjs, tools/ohlcv.mjs
+  ├── tools/socials-data.mjs, tools/socials-orchestrate.mjs
+  ├── tools/predictions.mjs, tools/foundation.mjs, tools/wallet-extra.mjs
+        ↓
+Solana / HTTP APIs / DB
 ```
 
 **Security:**
@@ -714,6 +732,9 @@ Successfully tested on mainnet (2024-08-27):
 ### Configuration Requirements
 
 ```env
+# Required for OHLCV (predictions)
+BIRDEYE_API_KEY=your_birdeye_key
+
 # Required for trading
 WALLET_ENCRYPTION_KEY=<64-char-hex-key>  # For wallet decryption
 SOLANA_RPC_ENDPOINT=<helius-or-other>    # RPC for transactions

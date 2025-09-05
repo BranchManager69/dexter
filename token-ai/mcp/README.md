@@ -34,6 +34,8 @@ Nothing changes unless you set these flags; defaults preserve existing behavior 
 - Smoke tests:
   - Stdio: `npm run test:mcp`
   - HTTP: `npm run test:mcp:http`
+  - Predictions (stdio): `node token-ai/scripts/test-predictions.mjs --tweet=1956196249452916913 [--mint=<SOL_MINT>] [--minutes=1440]`
+    - Env: set `BIRDEYE_API_KEY` to enable price verification; DB must contain the tweet for non-scraping tools.
 
 Systemd (production):
 - Units: `dexter-mcp` (MCP HTTP) and `dexter-ui` (UI/API/WS)
@@ -179,6 +181,42 @@ Nginx tips
 ## Tools
 
 All tools are registered in `mcp/common.mjs` using `@modelcontextprotocol/sdk`.
+
+### Predictions & Foundation (New)
+
+- `get_twitter_history({ mint_address, limit?, include_replies?, include_retweets?, include_deleted?, include_snapshots?, snapshots_limit?, since_time?, since_days?, author? })`
+  - Returns `{ mint_address, count, tweets, snapshots }`
+  - Errors (structured): `{ error: 'db_unavailable' }`
+
+- `get_media_from_tweet({ tweet_id, include_metadata? })`
+  - Returns `{ tweet_id, media: { image_urls[], video_urls[], card_previews[] }, media_count, metadata? }`
+  - Errors: `{ error: 'db_unavailable' }`, `{ error: 'tweet_not_found', tweet_id }`
+
+- `get_prediction_history({ token_address?, author_handle?, limit?, min_accuracy?, prediction_type?, order_by? })`
+  - Returns `{ count, predictions[], author_statistics? }`
+  - Errors: `{ error: 'db_unavailable' }`, or `{ error: 'not_found', count: 0 }`
+
+- `verify_tweet_prediction({ tweet_id, minutes_after?, prediction_type?, mint_address?, claims?, prediction_details? })`
+  - Returns scoring summary with `{ accuracy_score, verdict, price_data, saved_to_database }`
+  - Errors: `{ error: 'db_unavailable' }`, `{ error: 'tweet_not_found', tweet_id }`, `{ error: 'missing_birdeye_api_key' }`, `{ error: 'no_ohlcv_data', ... }`, `{ error: 'verify_failed', message }`
+
+- `verify_relative_prediction({ tweet_id, window_minutes?, claim?, targets?, target_kind?, chain_id?, primary_index?, against_index?, threshold_pct? })`
+  - Returns ranking and verdict for relative performance
+  - Errors: `{ error: 'db_unavailable' }`, `{ error: 'tweet_not_found', tweet_id }`, `{ error: 'missing_birdeye_api_key' }`, `{ error: 'verify_relative_failed', message }`
+
+- `ensure_token_activated({ mint_address })`, `ensure_token_enriched({ mint_address, timeout_sec?, poll? })`, `get_token_links_from_db({ mint_address })`
+  - Thin wrappers over foundation helpers; return underlying structured content
+
+### Wallet Extras (New)
+
+- `get_wallet_holdings({ wallet_address })`
+  - Returns `{ success, wallet_address, sol_balance, total_value_usd, tokens[], token_count }`
+  - Uses `API_BASE_URL` to reach the UI API server.
+
+### Required Env for Predictions
+
+- `BIRDEYE_API_KEY` (Birdeye v3 OHLCV). Without this, OHLCV-dependent verifiers return `{ error: 'missing_birdeye_api_key' }`.
+
 
 ChatGPT canonical
 - `search(query: string)` → returns `content: [{ type: "text", text: "{\"results\":[{id,title,url}]}" }]`
