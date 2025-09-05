@@ -387,11 +387,30 @@ async function handleToolFrames(msg) {
         try {
           const items = Array.isArray(result?.results) ? result.results : [];
           lastResolveList = items;
+
+          // Always close out the tool call so the model doesn't retry.
+          try {
+            const outputData = result?.mcp || result || { ok: false, error: 'no_result' };
+            if (window.LiveVoice?.voice?.dc) {
+              window.LiveVoice.voice.dc.send(JSON.stringify({
+                type: 'conversation.item.create',
+                item: {
+                  type: 'function_call_output',
+                  call_id: id,
+                  output: JSON.stringify(outputData)
+                }
+              }));
+            }
+            if (window.LiveDebug?.vd) {
+              window.LiveDebug.vd.add('info', 'sent function_call_output', { call_id: id });
+            }
+          } catch {}
+
           if (items.length === 0) {
             if (window.LiveVoice?.voice?.dc) {
-              window.LiveVoice.voice.dc.send(JSON.stringify({ 
-                type: 'response.create', 
-                response: { instructions: `I couldn't find a token for "${argsObj?.query || ''}". Please say a different name or symbol.` } 
+              window.LiveVoice.voice.dc.send(JSON.stringify({
+                type: 'response.create',
+                response: { instructions: `I couldn't find a token for "${argsObj?.query || ''}". Please say a different name or symbol.` }
               }));
             }
           } else {
@@ -404,11 +423,11 @@ async function handleToolFrames(msg) {
               return `${i + 1}) ${it.symbol || it.name || 'token'} ${addrShort} • liq ${liqTxt}`;
             }).join('; ');
             const instr = `I found these: ${top3}. Say a number (1-3), or say the last four of the address, or approximate liquidity (e.g., $2m).`;
-            
+
             if (window.LiveVoice?.voice?.dc) {
-              window.LiveVoice.voice.dc.send(JSON.stringify({ 
-                type: 'response.create', 
-                response: { instructions: instr } 
+              window.LiveVoice.voice.dc.send(JSON.stringify({
+                type: 'response.create',
+                response: { instructions: instr }
               }));
             }
           }
