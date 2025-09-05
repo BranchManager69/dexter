@@ -415,6 +415,15 @@ async function handleToolFrames(msg) {
         return;
       }
 
+      // Only execute and reply for active local function tools.
+      try {
+        const active = window.LiveTools?.activeFunctionToolNames;
+        if (!active || !active.has(rec.name)) {
+          if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'skip local execution (MCP-first)', { name: rec.name });
+          return; // Do not send function_call_output for MCP-owned tools
+        }
+      } catch {}
+
       // Call server tool endpoint for local function tools
       const hdr = { 'content-type': 'application/json' }; 
       try { 

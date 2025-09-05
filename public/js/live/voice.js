@@ -476,6 +476,10 @@ async function setupVoiceSession(dc, sessionInfo, model) {
 
       const toolsUpdate = [ { type:'mcp', server_label:'token-ai', server_url: absProxy, require_approval:'never' }, ...filteredLocal ];
       dc.send(JSON.stringify({ type:'session.update', session:{ tools: toolsUpdate } }));
+      try {
+        const activeNames = new Set((filteredLocal||[]).map(t => t?.name || t?.tool?.name).filter(Boolean));
+        if (window.LiveTools) window.LiveTools.activeFunctionToolNames = activeNames;
+      } catch {}
       if (window.LiveDebug?.vd) {
         window.LiveDebug.vd.add('info', 'mcp attached', { url: absProxy, minted: !!minted });
         window.LiveDebug.vd.add('info', 'tools registered', { n: toolsUpdate.length, mcp: true, function: filteredLocal.length });
@@ -487,6 +491,10 @@ async function setupVoiceSession(dc, sessionInfo, model) {
       // MCP failed — fall back to local function tools only
       const functionTools = Array.isArray(boot.tools) ? boot.tools.slice() : [];
       dc.send(JSON.stringify({ type:'session.update', session:{ tools: functionTools } }));
+      try {
+        const activeNames = new Set((functionTools||[]).map(t => t?.name || t?.tool?.name).filter(Boolean));
+        if (window.LiveTools) window.LiveTools.activeFunctionToolNames = activeNames;
+      } catch {}
       if (window.LiveDebug?.vd) window.LiveDebug.vd.add('warn', 'mcp attach failed', { error: String(e?.message||e), fallback: 'local-tools' });
     }
     
