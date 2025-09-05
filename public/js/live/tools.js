@@ -268,14 +268,44 @@ async function handleToolFrames(msg) {
         });
       }
       
-      // If this was an MCP call, Realtime executes it server-side.
-      // We only log completion and do NOT duplicate the call or send outputs.
+      // If this was an MCP call, Realtime executes it server-side and may embed
+      // the tool output in the completion frame (e.g., an "output" string).
+      // Surface high‑value details (e.g., tx hash) to the debug panel so users
+      // get the Solscan link and other metadata without duplicating the call.
       if (msg.callType === 'mcp') {
-        if (window.LiveDebug?.vd) {
-          window.LiveDebug.vd.add('info', 'mcp tool handled by realtime', {
-            id,
-            name: rec.name
-          });
+        try {
+          let rawOut = null;
+          // Attempt to extract output payload from known fields
+          if (typeof msg.output === 'string' && msg.output) rawOut = msg.output;
+          else if (typeof msg.result === 'string' && msg.result) rawOut = msg.result;
+          else if (typeof msg.item?.output === 'string' && msg.item.output) rawOut = msg.item.output;
+
+          // Heuristics: trading tools return content like "tx=<SIG>" in text output
+          // Extract base58-ish signature if present
+          let txHash = null;
+          if (typeof rawOut === 'string') {
+            const m = rawOut.match(/tx=([1-9A-HJ-NP-Za-km-z]{32,88})/);
+            if (m && m[1]) txHash = m[1];
+          }
+
+          // Build a compact result payload for the debug panel
+          const payload = { mcp: {} };
+          if (txHash) {
+            payload.mcp.tx_hash = txHash;
+            payload.mcp.solscan_url = `https://solscan.io/tx/${txHash}`;
+          }
+          // If we couldn't parse a tx, still emit a marker so the panel shows completion
+          if (!txHash && rawOut) payload.mcp.raw = String(rawOut).slice(0, 2000);
+
+          if (window.LiveDebug?.vd) {
+            window.LiveDebug.vd.add('info', 'tool result', {
+              name: rec.name,
+              // Do not truncate: keep JSON intact so the panel can parse tx_hash
+              result: JSON.stringify(payload)
+            });
+          }
+        } catch (e) {
+          try { if (window.LiveDebug?.vd) window.LiveDebug.vd.add('warn', 'mcp result parse failed', { error: String(e?.message || e) }); } catch {}
         }
         return;
       }

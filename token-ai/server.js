@@ -927,6 +927,7 @@ try {
   });
 } catch {}
 
+// Backward‑compat start endpoint
 app.post('/run', async (req, res) => {
   try {
     const { mint } = req.body || {};
@@ -952,6 +953,36 @@ app.post('/run', async (req, res) => {
     return res.json({ ok:true, pid });
   } catch (e) {
     console.error('[ai-ui] RUN error', e?.message || e);
+    return res.status(500).json({ ok:false, error: e?.message || 'error' });
+  }
+});
+
+// New alias matching the Live UI module (public/js/live/runs.js)
+// Accepts the same payload as POST /run and returns { ok, pid }
+app.post('/runs', async (req, res) => {
+  try {
+    const { mint } = req.body || {};
+    if (!mint || typeof mint !== 'string' || mint.length < 32) {
+      return res.status(400).json({ ok:false, error:'invalid mint' });
+    }
+    const normalizedMint = String(mint).trim();
+    for (const [pid, v] of activeRuns.entries()) {
+      try { if ((v?.mint || '') === normalizedMint) {
+        return res.status(409).json({ ok:false, error:'already_running', pid });
+      } } catch {}
+    }
+    if (activeRuns.size >= RUN_LIMIT) {
+      console.warn(`[ai-ui] RUN rejected (limit reached ${RUN_LIMIT}) mint=${String(mint).slice(0,8)}…`);
+      return res.status(429).json({ ok:false, error:`concurrency_limit (${RUN_LIMIT})` });
+    }
+    const TOKEN_AI_DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname));
+    const childEnv = { ...process.env, TOKEN_AI_EVENTS_URL: `http://localhost:${PORT}/events` };
+    const pid = spawnAnalyzer('agent', [normalizedMint], { cwd: path.resolve(TOKEN_AI_DIR, '..'), env: childEnv, mint: normalizedMint });
+    console.log(`[ai-ui] RUN started pid=${pid} mint=${String(mint).slice(0,8)}… (active=${activeRuns.size}/${RUN_LIMIT})`);
+    broadcast({ type:'DATA', topic:'terminal', subtype:'runner', event:'runner:started', data:{ mint, pid, started_at: new Date().toISOString() } });
+    return res.json({ ok:true, pid });
+  } catch (e) {
+    console.error('[ai-ui] RUN (/runs) error', e?.message || e);
     return res.status(500).json({ ok:false, error: e?.message || 'error' });
   }
 });

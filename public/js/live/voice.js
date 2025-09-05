@@ -450,13 +450,23 @@ async function setupVoiceSession(dc, sessionInfo, model) {
  * Handle incoming voice messages
  */
 function handleVoiceMessage(msg) {
-  // Assistant text deltas
+  // Assistant text deltas (text modality)
   if ((msg.type === 'response.delta' || msg.type === 'response.output_text.delta' || msg.type === 'response.text.delta') && typeof (msg.delta || msg.text) === 'string') {
     const seg = msg.delta || msg.text;
     voiceAppend(seg);
-    if (window.LiveDebug?.vd?.verbose) {
-      window.LiveDebug.vd.add('info', 'delta', { text: String(seg).slice(0, 240), type: msg.type });
-    }
+    try {
+      // Always show assistant transcript lines in the debug panel
+      if (window.LiveDebug?.vd) {
+        window.LiveDebug.vd.add('info', 'assistant.transcript', { text: String(seg).slice(0, 240) });
+      }
+    } catch {}
+  }
+
+  // Assistant audio transcript deltas (audio modality)
+  if (msg.type === 'response.audio_transcript.delta' && typeof (msg.delta || msg.text || msg.transcript) === 'string') {
+    const seg = msg.delta || msg.text || msg.transcript;
+    voiceAppend(seg);
+    try { if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'assistant.transcript', { text: String(seg).slice(0, 240) }); } catch {}
   }
   
   if (msg.type === 'response.completed') voiceAppend('\n');
@@ -482,7 +492,8 @@ function handleVoiceMessage(msg) {
       }
     }
     
-    if ((msg.type || '').includes('transcription') && (msg.text || msg.transcript)) {
+    // User input audio transcription (not assistant audio transcript)
+    if ((msg.type || '').startsWith('conversation.item.input_audio_transcription') && (msg.text || msg.transcript)) {
       const t = msg.text || msg.transcript; 
       voiceAppendLine('You', String(t));
       if (window.LiveDebug?.vd?.verbose) {
@@ -551,9 +562,10 @@ function stopVoice() {
   voice.connecting = false;
   voiceSetStatus('Off');
   
-  // Animate the debug log collapse when voice stops
-  const vdLog = document.getElementById('vdLog');
-  if (vdLog) vdLog.classList.remove('expanded');
+  // Keep the debug log visible after stop so users don't lose context
+  // (was collapsing the panel, which forced extra clicks to re-open)
+  // const vdLog = document.getElementById('vdLog');
+  // if (vdLog) vdLog.classList.remove('expanded');
 }
 
 /**
@@ -578,6 +590,8 @@ function setupVoiceEventListeners() {
   try {
     if (voiceBtn) {
       voiceBtn.addEventListener('click', () => { 
+        // Ensure debug panel opens immediately on first click
+        try { const vdLog = document.getElementById('vdLog'); if (vdLog) vdLog.classList.add('expanded'); } catch {}
         if (voice.connected || voice.connecting) { 
           stopVoice(); 
         } else { 

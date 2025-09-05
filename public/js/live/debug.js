@@ -85,13 +85,14 @@ const vd = {
             const toolName = ln.extra.name;
             const isTradeTool = ['execute_buy', 'execute_sell', 'execute_sell_all'].includes(toolName);
             
-            if (isTradeTool && result?.mcp?.tx_hash) {
+            if (isTradeTool && (result?.mcp?.tx_hash || result?.mcp?.solscan_url)) {
               // Create special rendering for trade results
               div.innerHTML = `[${ln.t}] ${ln.level.toUpperCase()} ${ln.msg} ${toolName}`;
               
               // Add transaction link
               const txLink = document.createElement('a');
-              txLink.href = `https://solscan.io/tx/${result.mcp.tx_hash}`;
+              const href = result?.mcp?.solscan_url || (result?.mcp?.tx_hash ? `https://solscan.io/tx/${result.mcp.tx_hash}` : null);
+              txLink.href = href || '#';
               txLink.target = '_blank';
               txLink.style.cssText = 'margin-left:8px;color:#79e08f;text-decoration:underline';
               txLink.textContent = '→ View Transaction';
