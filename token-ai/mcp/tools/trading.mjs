@@ -898,6 +898,23 @@ export function registerTradingTools(server, options = {}) {
     }
   });
 
+  // Transaction status (helpful for UI/agent confirmations)
+  server.registerTool('get_transaction_status', {
+    title: 'Get Transaction Status',
+    description: 'Check the status of a transaction by signature/hash',
+    inputSchema: { tx_hash: z.string() },
+    outputSchema: { confirmed: z.boolean().optional(), status: z.string().optional(), error: z.any().optional(), slot: z.number().int().optional(), tx_hash: z.string() }
+  }, async ({ tx_hash }) => {
+    try {
+      const conn = await getRpcConnection();
+      const status = await conn.getSignatureStatus(tx_hash);
+      const confirmed = status.value?.confirmationStatus === 'confirmed' || status.value?.confirmationStatus === 'finalized';
+      return { structuredContent: { tx_hash, confirmed, status: status.value?.confirmationStatus || 'unknown', error: status.value?.err || null, slot: status.value?.slot }, content: [{ type:'text', text: JSON.stringify({ tx_hash, confirmed }) }] };
+    } catch (e) {
+      return { content: [{ type:'text', text: e?.message || 'status_failed' }], isError: true };
+    }
+  });
+
   server.registerTool('execute_sell_all_preview', {
     title: 'Execute Sell All Preview',
     description: 'Preview selling entire token balance for a managed wallet (no transaction sent).',

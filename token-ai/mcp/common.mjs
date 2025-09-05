@@ -12,6 +12,11 @@ import { registerAgentRunTools } from './tools/agent-run.mjs';
 import { registerReportAnalysisTools } from './tools/report-analysis.mjs';
 import { registerVoiceDebugTools } from './tools/voice-debug.mjs';
 import { registerWebResearchTools } from './tools/web-research.mjs';
+import { registerDexscreenerTools } from './tools/dexscreener.mjs';
+import { registerWebsitesTools } from './tools/websites.mjs';
+import { registerOhlcvTools } from './tools/ohlcv.mjs';
+import { registerSocialsOrchestrateTools } from './tools/socials-orchestrate.mjs';
+import { registerSocialsDataTools } from './tools/socials-data.mjs';
 import { registerTradingTools } from './tools/trading.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -94,8 +99,18 @@ export function buildMcpServer(options = {}){
   if (want('runs') && ENABLE_RUN_TOOLS) registerAgentRunTools(server);
   if (want('reports')) registerReportAnalysisTools(server);
   if (want('voice')) registerVoiceDebugTools(server);
-  if (want('web')) registerWebResearchTools(server);
+  if (want('web')) {
+    registerWebResearchTools(server);
+    registerWebsitesTools(server);
+    registerDexscreenerTools(server);
+    registerOhlcvTools(server);
+    registerSocialsDataTools(server);
+  }
   if (want('trading')) registerTradingTools(server);
+  if (want('runs') && ENABLE_RUN_TOOLS) {
+    // registerAgentRunTools already handled above; add orchestrate aggregator
+    registerSocialsOrchestrateTools(server);
+  }
 
   // Resources (use McpServer.resource API)
   // report://ai-token-analyses/{file}

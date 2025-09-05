@@ -42,6 +42,7 @@ dist/
 /token-ai/**/.temp/**
 /token-ai/**/supabase/**/.temp/**
 supabase/.temp/**
+
 # Telegram sessions (sensitive)
 /token-ai/socials/telegram/*.session
 /token-ai/socials/telegram/*.session.json
