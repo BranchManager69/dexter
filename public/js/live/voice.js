@@ -35,7 +35,10 @@ let voiceLog = null;
 /**
  * Initialize voice functionality
  */
+let voiceInitialized = false;
 function initVoice() {
+  if (voiceInitialized) return;
+  voiceInitialized = true;
   voiceBtn = document.getElementById('voiceBtn');
   
   // Create voice HUD

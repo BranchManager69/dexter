@@ -12,8 +12,11 @@ const vd = {
   session: (crypto?.randomUUID?.() || Math.random().toString(36).slice(2)),
   uploadBuf: [],
   flushing: false,
+  initialized: false,
 
   init() {
+    if (this.initialized) return;
+    this.initialized = true;
     this.el = document.getElementById('voiceDebug');
     this.logEl = document.getElementById('vdLog');
     this.statusEl = document.getElementById('vdStatus');
