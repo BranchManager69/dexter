@@ -81,16 +81,6 @@ ws.on('open', () => {
     type: 'session.update',
     session: { voice: 'verse', modalities: AUDIO_ONLY ? ['audio'] : ['audio','text'], output_audio_format: 'pcm16', turn_detection: { type:'server_vad' } }
   }));
-
-  // Ask the model to speak a short phrase
-  ws.send(JSON.stringify({
-    type: 'response.create',
-    response: {
-      modalities: AUDIO_ONLY ? ['audio'] : ['audio','text'],
-      instructions: AUDIO_ONLY ? `Speak the following phrase as synthesized speech only (no text tokens). Keep speaking for at least 2 seconds. Phrase: ${PHRASE}` : PHRASE,
-      audio: { voice: 'verse', format: 'pcm16' }
-    }
-  }));
 });
 
 let frames = 0;

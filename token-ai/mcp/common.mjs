@@ -178,7 +178,7 @@ export function buildMcpServer(options = {}){
       const abs = path.join(REPORTS_DIR, String(file));
       if (!fs.existsSync(abs)) throw new Error('File not found');
       const data = fs.readFileSync(abs, 'utf8');
-      return { contents: [{ type: 'text', text: data }] };
+      return { contents: [{ uri: _uri, mimeType: 'application/json', type: 'text', text: data }] };
     }
   );
 
@@ -231,7 +231,7 @@ export function buildMcpServer(options = {}){
             const j = JSON.parse(raw);
             const jm = String(extractMintFromReport(j, f.name) || '').toLowerCase();
             if (jm && (jm === m || jm.includes(m))) {
-              return { contents: [{ type: 'text', text: raw }] };
+              return { contents: [{ uri: _uri, mimeType: 'application/json', type: 'text', text: raw }] };
             }
           } catch {}
         }
@@ -268,7 +268,7 @@ export function buildMcpServer(options = {}){
       const file = path.join(RESEARCH_DIR, 'notes', `${safe}.json`);
       if (!fs.existsSync(file)) throw new Error('Note not found');
       const data = fs.readFileSync(file, 'utf8');
-      return { contents: [{ type: 'text', text: data }] };
+      return { contents: [{ uri: _uri, mimeType: 'application/json', type: 'text', text: data }] };
     }
   );
 
@@ -303,7 +303,7 @@ export function buildMcpServer(options = {}){
       const abs = path.join(RESEARCH_DIR, 'reports', String(file));
       if (!fs.existsSync(abs)) throw new Error('File not found');
       const data = fs.readFileSync(abs, 'utf8');
-      return { contents: [{ type: 'text', text: data }] };
+      return { contents: [{ uri: _uri, mimeType: 'application/json', type: 'text', text: data }] };
     }
   );
 
