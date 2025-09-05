@@ -430,51 +430,65 @@ async function setupVoiceSession(dc, sessionInfo, model) {
       if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'tools loaded', { n: boot.tools.length });
     }
     
-    // Attach MCP via proxy
+    // Attach MCP via proxy (MCP-first) and register only non-overlapping local tools
     try {
       let minted = null;
       try {
         const hdr = { 'accept': 'application/json' };
-        try { 
-          const at = window.SUPABASE?.session?.access_token; 
-          if (at) hdr['authorization'] = `Bearer ${at}`; 
-        } catch {}
+        try { const at = window.SUPABASE?.session?.access_token; if (at) hdr['authorization'] = `Bearer ${at}`; } catch {}
         const r = await fetch(window.LiveUtils.api('/mcp-user-token'), { headers: hdr, cache: 'no-cache' });
-        if (r.ok) { 
-          const j = await r.json().catch(() => null); 
-          minted = j?.token || null; 
-          try { if (minted) window.X_USER_TOKEN = minted; } catch {}
-        }
+        if (r.ok) { const j = await r.json().catch(() => null); minted = j?.token || null; try { if (minted) window.X_USER_TOKEN = minted; } catch {} }
       } catch {}
-      
+
       let mcpPath = '/mcp-proxy';
       const tok = minted || (window.X_USER_TOKEN || '');
       if (tok) mcpPath += `?userToken=${encodeURIComponent(String(tok))}`;
       const absProxy = new URL(window.LiveUtils.api(mcpPath), location.origin).toString();
-      const toolsAll = Array.isArray(boot.tools) ? boot.tools.slice() : [];
-      toolsAll.push({ type: 'mcp', server_label: 'token-ai', server_url: absProxy, require_approval: 'never' });
-      const combined = { type: 'session.update', session: { tools: toolsAll } };
-      dc.send(JSON.stringify(combined));
+
+      // Fetch MCP tool list to de-dupe local tools
+      let mcpTools = [];
+      try {
+        const hdr2 = { 'content-type': 'application/json' };
+        if (window.AGENT_TOKEN) hdr2['x-agent-token'] = String(window.AGENT_TOKEN);
+        if (window.X_USER_TOKEN) hdr2['x-user-token'] = String(window.X_USER_TOKEN);
+        const rt = await fetch(window.LiveUtils.api('/realtime/tool-call'), { method:'POST', headers: hdr2, body: JSON.stringify({ name:'mcp_tools_list', args:{} }) });
+        const jt = await rt.json().catch(()=>null);
+        if (jt?.ok && Array.isArray(jt.tools)) mcpTools = jt.tools;
+      } catch {}
+
+      const mcpNames = new Set();
+      for (const t of mcpTools) { const nm = t?.name || t?.tool?.name; if (nm) mcpNames.add(nm); }
+
+      // Whitelist strictly local voice/debug utilities; everything else prefers MCP if present
+      const localOnly = new Set(['get_latest_analysis','voice_health','voice_debug_save','wait_for_report_by_mint','finalize_report','list_managed_wallets','list_aliases','add_wallet_alias','set_default_wallet','list_wallet_token_balances']);
+      const functionTools = Array.isArray(boot.tools) ? boot.tools.slice() : [];
+      const filteredLocal = functionTools.filter(t => {
+        const nm = t?.name || t?.tool?.name; if (!nm) return false;
+        if (localOnly.has(nm)) return true;
+        if (mcpNames.has(nm)) return false;
+        return true;
+      });
+      const suppressedLocal = functionTools.filter(t => {
+        const nm = t?.name || t?.tool?.name; if (!nm) return false;
+        if (localOnly.has(nm)) return false;
+        return mcpNames.has(nm);
+      });
+
+      const toolsUpdate = [ { type:'mcp', server_label:'token-ai', server_url: absProxy, require_approval:'never' }, ...filteredLocal ];
+      dc.send(JSON.stringify({ type:'session.update', session:{ tools: toolsUpdate } }));
       if (window.LiveDebug?.vd) {
         window.LiveDebug.vd.add('info', 'mcp attached', { url: absProxy, minted: !!minted });
-        window.LiveDebug.vd.add('info', 'tools registered', { n: toolsAll.length });
+        window.LiveDebug.vd.add('info', 'tools registered', { n: toolsUpdate.length, mcp: true, function: filteredLocal.length });
+        try { if (window.LiveDebug?.vd?.setTools) window.LiveDebug.vd.setTools({ functionTools: filteredLocal, mcpTools, suppressedTools: suppressedLocal }); } catch {}
+        if (mcpTools.length) window.LiveDebug.vd.add('info', 'mcp tools imported', { count: mcpTools.length });
+        if (suppressedLocal.length) window.LiveDebug.vd.add('info', 'mcp suppressed locals', { count: suppressedLocal.length, names: suppressedLocal.map(t=>t.name).slice(0,12) });
       }
-    } catch (e) { 
-      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('warn', 'mcp attach failed', { error: String(e?.message || e) }); 
+    } catch (e) {
+      // MCP failed — fall back to local function tools only
+      const functionTools = Array.isArray(boot.tools) ? boot.tools.slice() : [];
+      dc.send(JSON.stringify({ type:'session.update', session:{ tools: functionTools } }));
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('warn', 'mcp attach failed', { error: String(e?.message||e), fallback: 'local-tools' });
     }
-
-    // Try to fetch MCP tool list explicitly for UI display
-    try {
-      const hdr = { 'content-type': 'application/json' };
-      if (window.AGENT_TOKEN) hdr['x-agent-token'] = String(window.AGENT_TOKEN);
-      if (window.X_USER_TOKEN) hdr['x-user-token'] = String(window.X_USER_TOKEN);
-      const r = await fetch(window.LiveUtils.api('/realtime/tool-call'), { method:'POST', headers: hdr, body: JSON.stringify({ name:'mcp_tools_list', args:{} }) });
-      const j = await r.json().catch(()=>null);
-      if (j?.ok && Array.isArray(j.tools)) {
-        try { if (window.LiveDebug?.vd?.setTools) window.LiveDebug.vd.setTools({ functionTools: boot.tools || [], mcpTools: j.tools }); } catch {}
-        if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'mcp tools imported', { count: j.tools.length });
-      }
-    } catch {}
     
   } catch (e) { 
     if (window.LiveDebug?.vd) {

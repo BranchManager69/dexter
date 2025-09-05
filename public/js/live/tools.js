@@ -4,6 +4,38 @@
 // Tool state
 const toolBuf = new Map(); // key: itemId or callId -> rec
 const toolMap = new Map(); // itemId -> callId
+const pendingOutputs = new Map(); // itemId -> outputData
+
+function emitFunctionOutput(rec, outputData) {
+  try {
+    const callId = rec?.callId || toolMap.get(rec?.itemId) || null;
+    if (!callId || !String(callId).startsWith('call_')) {
+      // Defer until we learn the call_id (from response.done)
+      if (rec?.itemId) pendingOutputs.set(rec.itemId, outputData);
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'defer function_call_output', { item_id: rec?.itemId });
+      return false;
+    }
+    if (window.LiveVoice?.voice?.dc) {
+      window.LiveVoice.voice.dc.send(JSON.stringify({ 
+        type: 'conversation.item.create',
+        item: {
+          type: 'function_call_output',
+          call_id: callId,
+          output: JSON.stringify(outputData)
+        }
+      }));
+    }
+    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'sent function_call_output', { call_id: callId });
+    // Trigger a response so the model speaks about the result
+    if (window.LiveVoice?.voice?.dc) {
+      window.LiveVoice.voice.dc.send(JSON.stringify({ type: 'response.create' }));
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'sent response.create');
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 let pendingConfirm = null; // { address, symbol, name }
 let lastResolveList = [];
 let pendingCandidates = null; // [{address,symbol,name,liquidity_usd}]
@@ -240,6 +272,28 @@ async function handleToolFrames(msg) {
     }
   }
 
+  // On response.done, backfill call_id and flush any deferred outputs
+  if (msg.type === 'response.done' && msg.response && Array.isArray(msg.response.output)) {
+    try {
+      for (const it of msg.response.output) {
+        if (it && it.type === 'function_call') {
+          const itemId = it.id;
+          const callId = it.call_id || it.callId;
+          if (itemId && callId) {
+            toolMap.set(itemId, callId);
+            const rec = toolBuf.get(itemId);
+            if (rec) rec.callId = callId;
+            const pending = pendingOutputs.get(itemId);
+            if (pending) {
+              emitFunctionOutput({ itemId, callId, name: rec?.name || 'tool' }, pending);
+              pendingOutputs.delete(itemId);
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
   if (msg.type === 'response.function_call.created') {
     const id = msg.id || msg.call_id || (msg.item?.id) || null; 
     const name = msg.name || msg.function?.name || msg.item?.name || null;
@@ -368,35 +422,6 @@ async function handleToolFrames(msg) {
         if (window.X_USER_TOKEN) hdr['x-user-token'] = String(window.X_USER_TOKEN); 
       } catch {}
       
-      // Preprocess certain tools before server call
-      try {
-        if (rec.name === 'run_agent') {
-          let mintIn = String((argsObj && argsObj.mint) || '').trim();
-          if (!mintIn || mintIn.length < 32) {
-            // Try to expand from our last known candidates
-            const sel = (window.LiveTools?.pendingConfirm?.address) || null;
-            const list = Array.isArray(window.LiveTools?.lastResolveList) ? window.LiveTools.lastResolveList : [];
-            const pc = Array.isArray(window.LiveTools?.pendingCandidates) ? window.LiveTools.pendingCandidates : [];
-            const merged = [...pc, ...list];
-            if (!mintIn && sel) {
-              argsObj.mint = sel;
-            } else if (mintIn) {
-              const key = mintIn.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-              // If user provided last 3-6 chars, try to match
-              if (key.length >= 3 && key.length <= 8) {
-                const found = merged.find(it => String(it.address||'').toUpperCase().endsWith(key));
-                if (found && found.address) argsObj.mint = found.address;
-              }
-              // If user said ordinal (e.g., '1', 'first'), map it
-              if ((!argsObj.mint || argsObj.mint.length < 32)) {
-                const idx = window.LiveTools?.wordToIndex ? window.LiveTools.wordToIndex(mintIn) : -1;
-                if (idx >= 0 && merged[idx] && merged[idx].address) argsObj.mint = merged[idx].address;
-              }
-            }
-          }
-        }
-      } catch {}
-
       let result = null;
       try {
         const r = await fetch(window.LiveUtils.api('/realtime/tool-call'), { 
@@ -434,20 +459,7 @@ async function handleToolFrames(msg) {
           // Always close out the tool call so the model doesn't retry.
           try {
             const outputData = result?.mcp || result || { ok: false, error: 'no_result' };
-            const callIdForOutput = rec.callId || msg.call_id || msg.item?.call_id || toolMap.get(rec.itemId) || rec.itemId;
-            if (window.LiveVoice?.voice?.dc) {
-              window.LiveVoice.voice.dc.send(JSON.stringify({
-                type: 'conversation.item.create',
-                item: {
-                  type: 'function_call_output',
-                  call_id: callIdForOutput,
-                  output: JSON.stringify(outputData)
-                }
-              }));
-            }
-            if (window.LiveDebug?.vd) {
-              window.LiveDebug.vd.add('info', 'sent function_call_output', { call_id: callIdForOutput });
-            }
+            emitFunctionOutput(rec, outputData);
           } catch {}
 
           if (items.length === 0) {
@@ -479,41 +491,10 @@ async function handleToolFrames(msg) {
         return;
       }
       
-      // Send function_call_output back to OpenAI, then trigger response
-      try {
-        // First send the function output with the actual result data
-        const outputData = result?.mcp || result || { ok: false, error: 'no_result' };
-        const callIdForOutput = rec.callId || msg.call_id || msg.item?.call_id || toolMap.get(rec.itemId) || rec.itemId;
-        
-        if (window.LiveVoice?.voice?.dc) {
-          window.LiveVoice.voice.dc.send(JSON.stringify({ 
-            type: 'conversation.item.create',
-            item: {
-              type: 'function_call_output',
-              call_id: callIdForOutput,
-              output: JSON.stringify(outputData)
-            }
-          }));
-        }
-        
-        if (window.LiveDebug?.vd) {
-          window.LiveDebug.vd.add('info', 'sent function_call_output', { call_id: callIdForOutput });
-        }
-        
-        // Then trigger response generation so the AI speaks about what happened
-        if (window.LiveVoice?.voice?.dc) {
-          window.LiveVoice.voice.dc.send(JSON.stringify({ type: 'response.create' }));
-        }
-        
-        if (window.LiveDebug?.vd) {
-          window.LiveDebug.vd.add('info', 'sent response.create');
-        }
-      } catch (e) {
-        if (window.LiveDebug?.vd) {
-          window.LiveDebug.vd.add('error', 'failed to send function output', { 
-            error: String(e?.message || e) 
-          });
-        }
+      // Send function_call_output back to OpenAI using the real call_id, or defer
+      const outputData = result?.mcp || result || { ok: false, error: 'no_result' };
+      if (!emitFunctionOutput(rec, outputData)) {
+        // deferred: we'll flush on response.done once call_id is known
       }
     }
   } catch {}

@@ -41,10 +41,12 @@ const vd = {
   // Tools overlay state
   functionTools: [],
   mcpTools: [],
-  setTools({ functionTools = [], mcpTools = [] } = {}) {
+  suppressedTools: [],
+  setTools({ functionTools = [], mcpTools = [], suppressedTools = [] } = {}) {
     try {
       if (Array.isArray(functionTools)) this.functionTools = functionTools;
       if (Array.isArray(mcpTools)) this.mcpTools = mcpTools;
+      if (Array.isArray(suppressedTools)) this.suppressedTools = suppressedTools;
       this.renderToolsOverlay();
     } catch {}
   },
@@ -73,10 +75,21 @@ const vd = {
           </div>`);
         } catch {}
       };
-      for (const t of (this.functionTools || [])) add('function', t);
-      for (const t of (this.mcpTools || [])) add('mcp', t);
+      const section = (title, src, items) => {
+        if (!Array.isArray(items) || !items.length) return;
+        rows.push(`<div style="margin:6px 0 2px; color:#9fb2c8; font-size:12px">${title}</div>`);
+        for (const t of items) add(src, t);
+      };
+      section('MCP Tools', 'mcp', this.mcpTools || []);
+      section('Function Tools (active)', 'function', this.functionTools || []);
+      section('Suppressed (overlapped by MCP)', 'suppressed', this.suppressedTools || []);
       list.innerHTML = rows.join('') || '<div style="color:#9fb2c8">No tools loaded yet.</div>';
-      if (count) count.textContent = `${(this.functionTools?.length||0) + (this.mcpTools?.length||0)}`;
+      if (count) {
+        const fn = (this.functionTools?.length||0);
+        const mc = (this.mcpTools?.length||0);
+        const sp = (this.suppressedTools?.length||0);
+        count.textContent = `${fn+mc} (suppressed ${sp})`;
+      }
       // Wire copy buttons
       list.querySelectorAll('[data-copy-name]').forEach(btn => {
         btn.addEventListener('click', () => {
