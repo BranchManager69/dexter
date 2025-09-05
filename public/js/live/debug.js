@@ -9,10 +9,22 @@ const vd = {
   verboseBtn: null,
   logs: [],
   verbose: true,
+  // Filters
+  timeline: true,
+  showTools: true,
+  showErrors: true,
+  showTranscripts: true,
+  showFrames: false,
+  search: '',
+  // Call summaries by id
+  calls: new Map(), // id -> { name, args, result, t }
   session: (crypto?.randomUUID?.() || Math.random().toString(36).slice(2)),
   uploadBuf: [],
   flushing: false,
   initialized: false,
+  _lastHash: null,
+  _repeatCount: 0,
+  _lastDiv: null,
 
   init() {
     if (this.initialized) return;
@@ -24,6 +36,59 @@ const vd = {
     
     this.setupEventListeners();
     this.add('info', 'Voice debug ready');
+  },
+
+  // Tools overlay state
+  functionTools: [],
+  mcpTools: [],
+  setTools({ functionTools = [], mcpTools = [] } = {}) {
+    try {
+      if (Array.isArray(functionTools)) this.functionTools = functionTools;
+      if (Array.isArray(mcpTools)) this.mcpTools = mcpTools;
+      this.renderToolsOverlay();
+    } catch {}
+  },
+  renderToolsOverlay() {
+    try {
+      const ov = document.getElementById('toolsOverlay');
+      const list = document.getElementById('toolsList');
+      const count = document.getElementById('toolsCount');
+      if (!ov || !list) return;
+      const rows = [];
+      const add = (src, t) => {
+        try {
+          const name = t?.name || t?.tool?.name || '(unnamed)';
+          const desc = t?.description || t?.tool?.description || '';
+          const params = t?.parameters || t?.tool?.inputSchema || t?.tool?.parameters || null;
+          rows.push(`<div class="tool-row" style="border-bottom:1px solid #1a1e27;padding:6px 0">
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="vd-badge" style="background:#0f1117">${src}</span>
+              <code style="font-size:12px">${name}</code>
+              <div style="margin-left:auto;display:flex;gap:6px">
+                <button class="vd-btn" data-copy-name="${encodeURIComponent(name)}">Copy Name</button>
+                <button class="vd-btn" data-copy-schema='${encodeURIComponent(JSON.stringify(params||{}, null, 2))}'>Copy Schema</button>
+              </div>
+            </div>
+            ${desc ? `<div style="color:#9fb2c8;font-size:12px;margin-top:4px">${desc}</div>` : ''}
+          </div>`);
+        } catch {}
+      };
+      for (const t of (this.functionTools || [])) add('function', t);
+      for (const t of (this.mcpTools || [])) add('mcp', t);
+      list.innerHTML = rows.join('') || '<div style="color:#9fb2c8">No tools loaded yet.</div>';
+      if (count) count.textContent = `${(this.functionTools?.length||0) + (this.mcpTools?.length||0)}`;
+      // Wire copy buttons
+      list.querySelectorAll('[data-copy-name]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          try { navigator.clipboard.writeText(decodeURIComponent(btn.getAttribute('data-copy-name')||'')); window.LiveUtils.showToast('Tool name copied'); } catch {}
+        });
+      });
+      list.querySelectorAll('[data-copy-schema]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          try { navigator.clipboard.writeText(decodeURIComponent(btn.getAttribute('data-copy-schema')||'')); window.LiveUtils.showToast('Schema copied'); } catch {}
+        });
+      });
+    } catch {}
   },
 
   scheduleFlush() { 
@@ -75,8 +140,36 @@ const vd = {
       const el = this.logEl; 
       if (!el) return;
       
+      const matchesFilters = (ln) => {
+        const s = this.search ? String(this.search).toLowerCase() : '';
+        const asText = (() => { try { return (ln.msg + ' ' + JSON.stringify(ln.extra||{})).toLowerCase(); } catch { return ln.msg.toLowerCase(); }})();
+        if (s && !asText.includes(s)) return false;
+        const cat = this.classify(ln);
+        if (cat === 'error') return this.showErrors;
+        if (cat === 'tool') return this.showTools;
+        if (cat === 'transcript') return this.showTranscripts;
+        if (cat === 'frame') return this.showFrames;
+        return true; // other
+      };
+
       // Append only last line for efficiency
       const append = (ln) => {
+        // Simple de-duplication: if same msg+extra repeats consecutively, compress
+        const hash = (() => { try { return `${ln.level}|${ln.msg}|${JSON.stringify(ln.extra||{})}`; } catch { return `${ln.level}|${ln.msg}`; }})();
+        if (this._lastHash && this._lastHash === hash && this._lastDiv) {
+          this._repeatCount = (this._repeatCount || 1) + 1;
+          try {
+            const mark = ` ×${this._repeatCount}`;
+            if (!this._lastDiv.textContent.endsWith(mark)) {
+              this._lastDiv.textContent = this._lastDiv.textContent.replace(/ ×\d+$/,'') + mark;
+            }
+          } catch {}
+          return;
+        } else {
+          this._lastHash = hash;
+          this._repeatCount = 1;
+        }
+        if (!matchesFilters(ln)) return;
         const div = document.createElement('div'); 
         div.className = 'vd-line' + (ln.level === 'error' ? ' err' : ln.level === 'warn' ? ' warn' : '');
         
@@ -120,10 +213,39 @@ const vd = {
           } catch {}
         }
         
+        // Timeline summary lines for tool calls
+        if (this.timeline && ln.msg === 'tool completed' && ln.extra && ln.extra.name) {
+          try {
+            const name = ln.extra.name;
+            const args = ln.extra.args || {};
+            const argsBrief = (() => { try { const s=JSON.stringify(args); return s.length>120? s.slice(0,120)+'…': s; } catch { return ''; }})();
+            div.textContent = `[${ln.t}] CALL ${name} args=${argsBrief}`;
+            div.style.color = '#9fb2c8';
+            el.appendChild(div);
+            this._lastDiv = div;
+            el.scrollTop = el.scrollHeight;
+            return;
+          } catch {}
+        }
+
         // Default rendering for non-trade results
         const extra = this.verbose && ln.extra ? (' ' + window.LiveUtils.safeJson(ln.extra)) : '';
         div.textContent = `[${ln.t}] ${ln.level.toUpperCase()} ${ln.msg}${extra}`;
-        el.appendChild(div); 
+        
+        // Click-to-copy convenience
+        try {
+          div.style.cursor = 'copy';
+          div.title = 'Click to copy this line';
+          div.addEventListener('click', () => {
+            try {
+              const txt = `[${ln.t}] ${ln.level.toUpperCase()} ${ln.msg}${extra}`;
+              navigator.clipboard.writeText(txt);
+              window.LiveUtils.showToast('Copied log line');
+            } catch {}
+          });
+        } catch {}
+        el.appendChild(div);
+        this._lastDiv = div;
         el.scrollTop = el.scrollHeight;
       };
       
@@ -133,6 +255,17 @@ const vd = {
         for (const ln of this.logs) append(ln); 
       }
     } catch {}
+  },
+
+  classify(ln){
+    try {
+      if (ln.level === 'error') return 'error';
+      const m = String(ln.msg||'');
+      if (m === 'tool-frame' || m === 'frame') return 'frame';
+      if (m === 'tool created' || m === 'tool completed' || m === 'tool result' || m.includes('MCP') || m.includes('tools registered') || m.includes('function_call_output') || m.includes('confirm->')) return 'tool';
+      if (m === 'assistant.transcript' || m === 'user.transcript') return 'transcript';
+      return 'other';
+    } catch { return 'other'; }
   },
 
   clear() { 
@@ -190,6 +323,16 @@ const vd = {
       };
 
       setupButton('vdClear', () => this.clear());
+      // Tools overlay toggle
+      setupButton('vdToolList', () => {
+        try {
+          const ov = document.getElementById('toolsOverlay');
+          if (ov) {
+            ov.style.display = (ov.style.display === 'none' || !ov.style.display) ? 'block' : 'none';
+            if (ov.style.display === 'block') this.renderToolsOverlay();
+          }
+        } catch {}
+      });
       setupButton('vdCopy', () => this.copy());
       setupButton('vdVerbose', (e) => { 
         this.verbose = !this.verbose; 
@@ -197,6 +340,39 @@ const vd = {
         e.currentTarget.textContent = 'Verbose: ' + (this.verbose ? 'On' : 'Off'); 
         this.render(); 
       });
+
+      // Filters
+      const toggleBtn = (id, key, onLabel) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('click', (e) => {
+          this[key] = !this[key];
+          e.currentTarget.setAttribute('data-on', this[key] ? '1' : '0');
+          e.currentTarget.textContent = `${onLabel.split(':')[0]}: ` + (this[key] ? 'On' : 'Off');
+          this.render();
+        });
+      };
+      toggleBtn('vdTimeline', 'timeline', 'Timeline: On');
+      toggleBtn('vdTools', 'showTools', 'Tools: On');
+      toggleBtn('vdErrors', 'showErrors', 'Errors: On');
+      toggleBtn('vdTrans', 'showTranscripts', 'Transcripts: On');
+      toggleBtn('vdFrames', 'showFrames', 'Frames: On');
+
+      const searchEl = document.getElementById('vdSearch');
+      if (searchEl) {
+        const handler = () => { this.search = searchEl.value || ''; this.render(); };
+        searchEl.addEventListener('input', handler);
+        searchEl.addEventListener('keydown', (e) => { if (e.key === 'Escape'){ searchEl.value=''; handler(); }});
+      }
+
+      // Tools overlay close
+      try {
+        const closeBtn = document.getElementById('toolsClose');
+        if (closeBtn) closeBtn.addEventListener('click', () => {
+          const ov = document.getElementById('toolsOverlay');
+          if (ov) ov.style.display = 'none';
+        });
+      } catch {}
 
       // Test Capture button
       setupButton('vdTestCapture', () => {

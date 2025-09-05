@@ -2,7 +2,8 @@
 // Tool calling and confirmation flow handling for Live UI
 
 // Tool state
-const toolBuf = new Map();
+const toolBuf = new Map(); // key: itemId or callId -> rec
+const toolMap = new Map(); // itemId -> callId
 let pendingConfirm = null; // { address, symbol, name }
 let lastResolveList = [];
 let pendingCandidates = null; // [{address,symbol,name,liquidity_usd}]
@@ -226,20 +227,27 @@ async function handleToolFrames(msg) {
   
   // Some streams emit a function_call as an output item; capture id+name here
   if (msg.type === 'response.output_item.added' && msg.item && (msg.item.type === 'function_call' || msg.item.name)) {
-    const id = msg.item.id || msg.id || null;
+    const itemId = msg.item.id || msg.id || null;
+    const callId = msg.item.call_id || msg.item.callId || null;
     const name = msg.item.name || null;
-    if (id && name) {
-      toolBuf.set(id, { name, args: '' });
-      try { window.LiveTools._currentCallId = id; } catch {}
-      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'tool created', { id, name });
+    if (itemId && name) {
+      const rec = { name, args: '', itemId, callId };
+      toolBuf.set(itemId, rec);
+      if (callId) toolBuf.set(callId, rec);
+      if (itemId && callId) toolMap.set(itemId, callId);
+      try { window.LiveTools._currentCallId = itemId; } catch {}
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'tool created', { id: itemId, name });
     }
   }
 
   if (msg.type === 'response.function_call.created') {
     const id = msg.id || msg.call_id || (msg.item?.id) || null; 
     const name = msg.name || msg.function?.name || msg.item?.name || null;
+    const callId = msg.call_id || msg.item?.call_id || null;
     if (!id || !name) return; 
-    toolBuf.set(id, { name, args: '' }); 
+    const rec = { name, args: '', itemId: id, callId };
+    toolBuf.set(id, rec);
+    if (callId) toolBuf.set(callId, rec);
       const callLabel = msg.callType === 'mcp' ? 'MCP tool' : 'tool';
       if (window.LiveDebug?.vd) {
         window.LiveDebug.vd.add('info', `${callLabel} created`, { id, name });
@@ -248,7 +256,7 @@ async function handleToolFrames(msg) {
     }
     
   if (msg.type === 'response.function_call.arguments.delta' || msg.type === 'response.function_call_arguments.delta') {
-    let id = msg.id || msg.call_id || (msg.item?.id) || null;
+    let id = msg.id || msg.call_id || (msg.item?.id) || null; 
     if (!id) { try { id = window.LiveTools?._currentCallId || null; } catch {} }
     if (!id) return;
     let rec = toolBuf.get(id);
@@ -268,7 +276,7 @@ async function handleToolFrames(msg) {
     let id = msg.id || msg.call_id || (msg.item?.id) || null; 
     if (!id) { try { id = window.LiveTools?._currentCallId || null; } catch {} }
     if (!id) return; 
-    const rec = toolBuf.get(id); 
+    let rec = toolBuf.get(id); 
     if (!rec) return; 
     // If no streamed args were captured, try to read full args off the item
     if (!rec.args) {
@@ -278,7 +286,13 @@ async function handleToolFrames(msg) {
         else if (typeof msg.item?.content?.arguments === 'string') rec.args = msg.item.content.arguments;
       } catch {}
     }
-    toolBuf.delete(id);
+    // Clean up both item and call keys
+    try {
+      toolBuf.delete(id);
+      const mapped = toolMap.get(rec.itemId);
+      if (mapped) toolBuf.delete(mapped);
+      try { toolMap.delete(rec.itemId); } catch {}
+    } catch {}
     try { if (window.LiveTools?._currentCallId === id) window.LiveTools._currentCallId = null; } catch {}
       
       let argsObj = {}; 
@@ -354,6 +368,35 @@ async function handleToolFrames(msg) {
         if (window.X_USER_TOKEN) hdr['x-user-token'] = String(window.X_USER_TOKEN); 
       } catch {}
       
+      // Preprocess certain tools before server call
+      try {
+        if (rec.name === 'run_agent') {
+          let mintIn = String((argsObj && argsObj.mint) || '').trim();
+          if (!mintIn || mintIn.length < 32) {
+            // Try to expand from our last known candidates
+            const sel = (window.LiveTools?.pendingConfirm?.address) || null;
+            const list = Array.isArray(window.LiveTools?.lastResolveList) ? window.LiveTools.lastResolveList : [];
+            const pc = Array.isArray(window.LiveTools?.pendingCandidates) ? window.LiveTools.pendingCandidates : [];
+            const merged = [...pc, ...list];
+            if (!mintIn && sel) {
+              argsObj.mint = sel;
+            } else if (mintIn) {
+              const key = mintIn.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+              // If user provided last 3-6 chars, try to match
+              if (key.length >= 3 && key.length <= 8) {
+                const found = merged.find(it => String(it.address||'').toUpperCase().endsWith(key));
+                if (found && found.address) argsObj.mint = found.address;
+              }
+              // If user said ordinal (e.g., '1', 'first'), map it
+              if ((!argsObj.mint || argsObj.mint.length < 32)) {
+                const idx = window.LiveTools?.wordToIndex ? window.LiveTools.wordToIndex(mintIn) : -1;
+                if (idx >= 0 && merged[idx] && merged[idx].address) argsObj.mint = merged[idx].address;
+              }
+            }
+          }
+        }
+      } catch {}
+
       let result = null;
       try {
         const r = await fetch(window.LiveUtils.api('/realtime/tool-call'), { 
@@ -391,18 +434,19 @@ async function handleToolFrames(msg) {
           // Always close out the tool call so the model doesn't retry.
           try {
             const outputData = result?.mcp || result || { ok: false, error: 'no_result' };
+            const callIdForOutput = rec.callId || msg.call_id || msg.item?.call_id || toolMap.get(rec.itemId) || rec.itemId;
             if (window.LiveVoice?.voice?.dc) {
               window.LiveVoice.voice.dc.send(JSON.stringify({
                 type: 'conversation.item.create',
                 item: {
                   type: 'function_call_output',
-                  call_id: id,
+                  call_id: callIdForOutput,
                   output: JSON.stringify(outputData)
                 }
               }));
             }
             if (window.LiveDebug?.vd) {
-              window.LiveDebug.vd.add('info', 'sent function_call_output', { call_id: id });
+              window.LiveDebug.vd.add('info', 'sent function_call_output', { call_id: callIdForOutput });
             }
           } catch {}
 
@@ -439,20 +483,21 @@ async function handleToolFrames(msg) {
       try {
         // First send the function output with the actual result data
         const outputData = result?.mcp || result || { ok: false, error: 'no_result' };
+        const callIdForOutput = rec.callId || msg.call_id || msg.item?.call_id || toolMap.get(rec.itemId) || rec.itemId;
         
         if (window.LiveVoice?.voice?.dc) {
           window.LiveVoice.voice.dc.send(JSON.stringify({ 
             type: 'conversation.item.create',
             item: {
               type: 'function_call_output',
-              call_id: id,
+              call_id: callIdForOutput,
               output: JSON.stringify(outputData)
             }
           }));
         }
         
         if (window.LiveDebug?.vd) {
-          window.LiveDebug.vd.add('info', 'sent function_call_output', { call_id: id });
+          window.LiveDebug.vd.add('info', 'sent function_call_output', { call_id: callIdForOutput });
         }
         
         // Then trigger response generation so the AI speaks about what happened

@@ -313,6 +313,38 @@ export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
         try { return JSON.parse(txt); } catch { return { ok:false, error:'mcp_bad_json', raw: txt.slice(0,2000) }; }
       }
 
+      if (name === 'mcp_tools_list') {
+        try {
+          const MCP_PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
+          const TOKEN = process.env.TOKEN_AI_MCP_TOKEN || '';
+          const XUSER = String((req.headers['x-user-token']||'')).trim();
+          const initBody = JSON.stringify({ jsonrpc:'2.0', id: '1', method:'initialize', params:{ clientInfo:{ name:'voice-bridge', version:'0.1' }, protocolVersion:'2024-11-05', capabilities:{} } });
+          const ctrl = new AbortController();
+          const initResp = await fetch(`http://localhost:${MCP_PORT}/mcp`, {
+            method:'POST',
+            headers: { 'Authorization': TOKEN ? `Bearer ${TOKEN}` : '', ...(XUSER? { 'X-User-Token': XUSER } : {}), 'Accept':'application/json, text/event-stream', 'Content-Type':'application/json' },
+            body: initBody,
+            signal: ctrl.signal,
+          }).catch(e=>({ ok:false, headers:new Headers(), statusText:String(e?.message||e) }));
+          let sid = '';
+          try { sid = initResp?.headers?.get?.('mcp-session-id') || ''; } catch {}
+          try { ctrl.abort(); } catch {}
+          if (!sid) return res.status(502).json({ ok:false, error:'mcp_no_session' });
+          const listBody = JSON.stringify({ jsonrpc:'2.0', id:'2', method:'tools/list', params:{} });
+          const r2 = await fetch(`http://localhost:${MCP_PORT}/mcp`, {
+            method:'POST',
+            headers: { 'Authorization': TOKEN ? `Bearer ${TOKEN}` : '', ...(XUSER? { 'X-User-Token': XUSER } : {}), 'Accept':'application/json', 'Content-Type':'application/json', 'Mcp-Session-Id': sid },
+            body: listBody,
+          });
+          const txt = await r2.text();
+          let obj = null; try { obj = JSON.parse(txt); } catch {}
+          const tools = obj?.result?.tools || obj?.tools || [];
+          return res.json({ ok:true, tools, raw: obj });
+        } catch (e) {
+          return res.status(502).json({ ok:false, error:'mcp_list_failed', details: String(e?.message||e) });
+        }
+      }
+
       if (name === 'run_agent') {
         const mint = String(args?.mint||'').trim();
         if (!mint || mint.length < 32) return res.status(400).json({ ok:false, error:'bad_mint' });
@@ -483,4 +515,3 @@ export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
 }
 
 export default { registerRealtimeRoutes };
-

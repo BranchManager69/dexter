@@ -41,7 +41,7 @@ let voiceInitialized = false;
 function initVoice() {
   if (voiceInitialized) return;
   voiceInitialized = true;
-  voiceBtn = document.getElementById('voiceBtn');
+  voiceBtn = document.getElementById('vdVoice') || document.getElementById('voiceBtn');
   msgInput = document.getElementById('msgInput');
   msgSend = document.getElementById('msgSend');
   
@@ -79,10 +79,15 @@ function createVoiceHud() {
  */
 function voiceSetStatus(txt, cls) {
   try {
-    if (voiceBtn) {
-      voiceBtn.textContent = 'Voice: ' + txt;
-      voiceBtn.classList.remove('ok', 'warn', 'bad');
-      if (cls) voiceBtn.classList.add(cls);
+    const btns = [];
+    try { const b1 = document.getElementById('vdVoice'); if (b1) btns.push(b1); } catch {}
+    try { if (voiceBtn && !btns.includes(voiceBtn)) btns.push(voiceBtn); } catch {}
+    for (const b of btns) {
+      try {
+        b.textContent = 'Voice: ' + txt;
+        b.classList.remove('ok', 'warn', 'bad');
+        if (cls) b.classList.add(cls);
+      } catch {}
     }
   } catch {}
   
@@ -438,6 +443,7 @@ async function setupVoiceSession(dc, sessionInfo, model) {
         if (r.ok) { 
           const j = await r.json().catch(() => null); 
           minted = j?.token || null; 
+          try { if (minted) window.X_USER_TOKEN = minted; } catch {}
         }
       } catch {}
       
@@ -456,6 +462,19 @@ async function setupVoiceSession(dc, sessionInfo, model) {
     } catch (e) { 
       if (window.LiveDebug?.vd) window.LiveDebug.vd.add('warn', 'mcp attach failed', { error: String(e?.message || e) }); 
     }
+
+    // Try to fetch MCP tool list explicitly for UI display
+    try {
+      const hdr = { 'content-type': 'application/json' };
+      if (window.AGENT_TOKEN) hdr['x-agent-token'] = String(window.AGENT_TOKEN);
+      if (window.X_USER_TOKEN) hdr['x-user-token'] = String(window.X_USER_TOKEN);
+      const r = await fetch(window.LiveUtils.api('/realtime/tool-call'), { method:'POST', headers: hdr, body: JSON.stringify({ name:'mcp_tools_list', args:{} }) });
+      const j = await r.json().catch(()=>null);
+      if (j?.ok && Array.isArray(j.tools)) {
+        try { if (window.LiveDebug?.vd?.setTools) window.LiveDebug.vd.setTools({ functionTools: boot.tools || [], mcpTools: j.tools }); } catch {}
+        if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'mcp tools imported', { count: j.tools.length });
+      }
+    } catch {}
     
   } catch (e) { 
     if (window.LiveDebug?.vd) {
@@ -618,15 +637,17 @@ function setMicEnabled(on) {
  */
 function setupVoiceEventListeners() {
   try {
-    if (voiceBtn) {
-      voiceBtn.addEventListener('click', () => { 
-        // Ensure debug panel opens immediately on first click
+    const btns = [];
+    try { const b1 = document.getElementById('vdVoice'); if (b1) btns.push(b1); } catch {}
+    try { const b2 = document.getElementById('voiceBtn'); if (b2) btns.push(b2); } catch {}
+    for (const b of btns) {
+      b.addEventListener('click', () => {
         try { const vdLog = document.getElementById('vdLog'); if (vdLog) vdLog.classList.add('expanded'); } catch {}
-        if (voice.connected || voice.connecting) { 
-          stopVoice(); 
-        } else { 
-          startVoice(); 
-        } 
+        if (voice.connected || voice.connecting) {
+          stopVoice();
+        } else {
+          startVoice();
+        }
       });
     }
   } catch {}
