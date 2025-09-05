@@ -133,7 +133,8 @@ async function checkPendingConfirm(text) {
         if (window.AGENT_TOKEN) hdr['x-agent-token'] = String(window.AGENT_TOKEN); 
         if (window.X_USER_TOKEN) hdr['x-user-token'] = String(window.X_USER_TOKEN); 
       } catch {}
-      
+      // No transcript-based fallback — require proper tool arguments
+
       try {
         const r = await fetch(window.LiveUtils.api('/realtime/tool-call'), { 
           method: 'POST', 
@@ -220,14 +221,25 @@ async function handleToolFrames(msg) {
   try {
     if (!msg || !msg.type) return;
     
-    // Normalize event types to handle both function_call and mcp_call uniformly
-    msg = normalizeToolEvent(msg);
-    
-    if (msg.type === 'response.function_call.created') {
-      const id = msg.id || msg.call_id || (msg.item?.id) || null; 
-      const name = msg.name || msg.function?.name || msg.item?.name || null;
-      if (!id || !name) return; 
-      toolBuf.set(id, { name, args: '' }); 
+  // Normalize event types to handle both function_call and mcp_call uniformly
+  msg = normalizeToolEvent(msg);
+  
+  // Some streams emit a function_call as an output item; capture id+name here
+  if (msg.type === 'response.output_item.added' && msg.item && (msg.item.type === 'function_call' || msg.item.name)) {
+    const id = msg.item.id || msg.id || null;
+    const name = msg.item.name || null;
+    if (id && name) {
+      toolBuf.set(id, { name, args: '' });
+      try { window.LiveTools._currentCallId = id; } catch {}
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'tool created', { id, name });
+    }
+  }
+
+  if (msg.type === 'response.function_call.created') {
+    const id = msg.id || msg.call_id || (msg.item?.id) || null; 
+    const name = msg.name || msg.function?.name || msg.item?.name || null;
+    if (!id || !name) return; 
+    toolBuf.set(id, { name, args: '' }); 
       const callLabel = msg.callType === 'mcp' ? 'MCP tool' : 'tool';
       if (window.LiveDebug?.vd) {
         window.LiveDebug.vd.add('info', `${callLabel} created`, { id, name });
@@ -235,28 +247,53 @@ async function handleToolFrames(msg) {
       return;
     }
     
-    if (msg.type === 'response.function_call.arguments.delta' || msg.type === 'response.function_call_arguments.delta') {
-      const id = msg.id || msg.call_id || (msg.item?.id) || null; 
-      if (!id) return; 
-      const rec = toolBuf.get(id); 
-      if (!rec) return; 
-      const delta = msg.delta || msg.arguments || ''; 
-      rec.args += String(delta); 
-      return;
-    }
+  if (msg.type === 'response.function_call.arguments.delta' || msg.type === 'response.function_call_arguments.delta') {
+    let id = msg.id || msg.call_id || (msg.item?.id) || null;
+    if (!id) { try { id = window.LiveTools?._currentCallId || null; } catch {} }
+    if (!id) return;
+    let rec = toolBuf.get(id);
+    if (!rec) { rec = { name: 'unknown', args: '' }; toolBuf.set(id, rec); }
+    // Be liberal in what we accept: some frames provide `delta` as a string,
+    // others may nest it under `arguments.delta`.
+    let chunk = '';
+    if (typeof msg.delta === 'string') chunk = msg.delta;
+    else if (typeof msg.arguments === 'string') chunk = msg.arguments;
+    else if (msg.arguments && typeof msg.arguments.delta === 'string') chunk = msg.arguments.delta;
+    else if (msg.delta && typeof msg.delta.arguments === 'string') chunk = msg.delta.arguments;
+    if (chunk) rec.args += String(chunk);
+    return;
+  }
     
-    if (msg.type === 'response.function_call.completed') {
-      const id = msg.id || msg.call_id || (msg.item?.id) || null; 
-      if (!id) return; 
-      const rec = toolBuf.get(id); 
-      if (!rec) return; 
-      toolBuf.delete(id);
+  if (msg.type === 'response.function_call.completed' || msg.type === 'response.output_item.done') {
+    let id = msg.id || msg.call_id || (msg.item?.id) || null; 
+    if (!id) { try { id = window.LiveTools?._currentCallId || null; } catch {} }
+    if (!id) return; 
+    const rec = toolBuf.get(id); 
+    if (!rec) return; 
+    // If no streamed args were captured, try to read full args off the item
+    if (!rec.args) {
+      try {
+        if (typeof msg.item?.arguments === 'string') rec.args = msg.item.arguments;
+        else if (typeof msg.arguments === 'string') rec.args = msg.arguments;
+        else if (typeof msg.item?.content?.arguments === 'string') rec.args = msg.item.content.arguments;
+      } catch {}
+    }
+    toolBuf.delete(id);
+    try { if (window.LiveTools?._currentCallId === id) window.LiveTools._currentCallId = null; } catch {}
       
       let argsObj = {}; 
       try { 
         argsObj = rec.args ? JSON.parse(rec.args) : {}; 
       } catch { 
-        argsObj = {}; 
+        // Tolerant fallback: extract query/symbol by regex from partial JSON stream
+        try {
+          const raw = String(rec.args || '');
+          const q = raw.match(/"query"\s*:\s*"([^"]*)"/i);
+          const s = raw.match(/"symbol"\s*:\s*"([^"]*)"/i);
+          const query = q && q[1] ? q[1] : (s && s[1] ? s[1] : '');
+          if (query) argsObj = { query };
+          else argsObj = {};
+        } catch { argsObj = {}; }
       }
       
       const callLabel = msg.callType === 'mcp' ? 'MCP tool' : 'tool';
@@ -340,10 +377,9 @@ async function handleToolFrames(msg) {
       })();
       
       if (window.LiveDebug?.vd) {
-        window.LiveDebug.vd.add(result?.ok ? 'info' : 'error', 'tool result', { 
-          name: rec.name, 
-          result: brief 
-        });
+        const payload = { name: rec.name, result: brief };
+        try { if (!result?.ok) payload.args_raw = (rec.args || '').slice(0, 240); } catch {}
+        window.LiveDebug.vd.add(result?.ok ? 'info' : 'error', 'tool result', payload);
       }
       
       // Confirmation flow for token resolution

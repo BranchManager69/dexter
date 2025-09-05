@@ -31,6 +31,8 @@ let pttActive = false;
 let voiceBtn = null;
 let voiceHud = null;
 let voiceLog = null;
+let msgInput = null;
+let msgSend = null;
 
 /**
  * Initialize voice functionality
@@ -40,10 +42,13 @@ function initVoice() {
   if (voiceInitialized) return;
   voiceInitialized = true;
   voiceBtn = document.getElementById('voiceBtn');
+  msgInput = document.getElementById('msgInput');
+  msgSend = document.getElementById('msgSend');
   
   // Create voice HUD
   createVoiceHud();
   setupVoiceEventListeners();
+  setupTextInput();
   setupPushToTalk();
   checkOpenAIKeyBanner();
 }
@@ -324,6 +329,14 @@ async function startVoice() {
     // Once DC opens, fetch bootstrap and send session.update
     dc.onopen = async () => {
       await setupVoiceSession(dc, j, model);
+      // Flush any queued typed prompts
+      try {
+        const q = Array.isArray(window.LiveVoice?._queuedText) ? window.LiveVoice._queuedText.slice() : [];
+        window.LiveVoice._queuedText = [];
+        for (const t of q) {
+          sendTextMessage(String(t));
+        }
+      } catch {}
     };
 
     voice.connecting = false; 
@@ -407,9 +420,9 @@ async function setupVoiceSession(dc, sessionInfo, model) {
     dc.send(JSON.stringify(frame)); 
     if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'session.update sent', { has_instructions: !!boot.instructions });
     
-    if (boot.tools.length) { 
-      dc.send(JSON.stringify({ type: 'session.update', session: { tools: boot.tools } })); 
-      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'tools registered', { n: boot.tools.length });
+    if (boot.tools.length) {
+      // Defer sending tools until after MCP attach so we can combine both sets
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'tools loaded', { n: boot.tools.length });
     }
     
     // Attach MCP via proxy
@@ -432,12 +445,14 @@ async function setupVoiceSession(dc, sessionInfo, model) {
       const tok = minted || (window.X_USER_TOKEN || '');
       if (tok) mcpPath += `?userToken=${encodeURIComponent(String(tok))}`;
       const absProxy = new URL(window.LiveUtils.api(mcpPath), location.origin).toString();
-      const mcpFrame = { 
-        type: 'session.update', 
-        session: { tools: [{ type: 'mcp', server_label: 'token-ai', server_url: absProxy }] } 
-      };
-      dc.send(JSON.stringify(mcpFrame));
-      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'mcp attached', { url: absProxy, minted: !!minted });
+      const toolsAll = Array.isArray(boot.tools) ? boot.tools.slice() : [];
+      toolsAll.push({ type: 'mcp', server_label: 'token-ai', server_url: absProxy, require_approval: 'never' });
+      const combined = { type: 'session.update', session: { tools: toolsAll } };
+      dc.send(JSON.stringify(combined));
+      if (window.LiveDebug?.vd) {
+        window.LiveDebug.vd.add('info', 'mcp attached', { url: absProxy, minted: !!minted });
+        window.LiveDebug.vd.add('info', 'tools registered', { n: toolsAll.length });
+      }
     } catch (e) { 
       if (window.LiveDebug?.vd) window.LiveDebug.vd.add('warn', 'mcp attach failed', { error: String(e?.message || e) }); 
     }
@@ -457,19 +472,16 @@ function handleVoiceMessage(msg) {
   if ((msg.type === 'response.delta' || msg.type === 'response.output_text.delta' || msg.type === 'response.text.delta') && typeof (msg.delta || msg.text) === 'string') {
     const seg = msg.delta || msg.text;
     voiceAppend(seg);
-    try {
-      // Always show assistant transcript lines in the debug panel
-      if (window.LiveDebug?.vd) {
-        window.LiveDebug.vd.add('info', 'assistant.transcript', { text: String(seg).slice(0, 240) });
-      }
-    } catch {}
+    // Buffer assistant text transcript; log once on response.text.done
+    try { window.LiveVoice._bufText = (window.LiveVoice._bufText || '') + String(seg); } catch {}
   }
 
   // Assistant audio transcript deltas (audio modality)
   if (msg.type === 'response.audio_transcript.delta' && typeof (msg.delta || msg.text || msg.transcript) === 'string') {
     const seg = msg.delta || msg.text || msg.transcript;
     voiceAppend(seg);
-    try { if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'assistant.transcript', { text: String(seg).slice(0, 240) }); } catch {}
+    // Buffer assistant audio transcript; log once on response.audio_transcript.done
+    try { window.LiveVoice._bufAudio = (window.LiveVoice._bufAudio || '') + String(seg); } catch {}
   }
   
   if (msg.type === 'response.completed') voiceAppend('\n');
@@ -486,6 +498,7 @@ function handleVoiceMessage(msg) {
           if (window.LiveDebug?.vd?.verbose) {
             window.LiveDebug.vd.add('info', 'user.transcript', { text: text.slice(0, 240) });
           }
+          try { if (window.LiveTools) window.LiveTools._lastUserTranscript = String(text); } catch {}
           try { 
             if (window.LiveTools?.checkPendingConfirm) {
               window.LiveTools.checkPendingConfirm(text); 
@@ -502,6 +515,7 @@ function handleVoiceMessage(msg) {
       if (window.LiveDebug?.vd?.verbose) {
         window.LiveDebug.vd.add('info', 'user.transcript', { text: String(t).slice(0, 240) });
       }
+      try { if (window.LiveTools) window.LiveTools._lastUserTranscript = String(t); } catch {}
       try { 
         if (window.LiveTools?.checkPendingConfirm) {
           window.LiveTools.checkPendingConfirm(t); 
@@ -510,23 +524,24 @@ function handleVoiceMessage(msg) {
     }
   } catch {}
   
-  // Log tool-related frames and unknown types
+  // Surface MCP tool import completion once the list arrives
+  try {
+    if (msg.type === 'response.output_item.added' && msg.item && (msg.item.type === 'mcp_list_tools' || msg.item.type === 'mcp_list_tools.completed')) {
+      const n = Array.isArray(msg.item.tools) ? msg.item.tools.length : (Array.isArray(msg.item?.content?.tools) ? msg.item.content.tools.length : undefined);
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'mcp tools imported', { count: n });
+    }
+  } catch {}
+
+  // Log tool-related frames and unknown types (reduce noise: keep only tool frames when not verbose)
   const t = String(msg.type || '');
-  // Surface high-value frames even when not in verbose mode
+  // Always show tool frames
   if (t.startsWith('response.function_call') || t.startsWith('response.mcp_call')) {
     if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'tool-frame', { type: t });
-  } else if (
-    t === 'response.done' ||
-    t === 'response.completed' ||
-    t === 'response.created' ||
-    t.startsWith('response.output_audio') ||
-    t.startsWith('response.audio') ||
-    t.startsWith('conversation.item') ||
-    t.includes('transcription')
-  ) {
-    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'frame', { type: t });
-  } else if (window.LiveDebug?.vd?.verbose && t !== 'response.delta') {
-    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'frame', { type: t });
+  } else if (window.LiveDebug?.vd?.verbose) {
+    // In verbose mode, include generic frames (except super-noisy deltas)
+    if (t !== 'response.audio_transcript.delta' && t !== 'response.text.delta' && t !== 'response.delta') {
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'frame', { type: t });
+    }
   }
   
   if (t === 'error') {
@@ -546,6 +561,18 @@ function handleVoiceMessage(msg) {
   if (t === 'response.done') {
     try { voiceAppend('\n'); } catch {}
   }
+
+  // Flush buffered assistant transcripts on done markers
+  try {
+    if (t === 'response.audio_transcript.done' && window.LiveVoice?._bufAudio) {
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'assistant.transcript', { text: window.LiveVoice._bufAudio });
+      window.LiveVoice._bufAudio = '';
+    }
+    if (t === 'response.text.done' && window.LiveVoice?._bufText) {
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'assistant.transcript', { text: window.LiveVoice._bufText });
+      window.LiveVoice._bufText = '';
+    }
+  } catch {}
 }
 
 /**
@@ -606,6 +633,69 @@ function setupVoiceEventListeners() {
 }
 
 /**
+ * Setup typed text input (sends messages over Realtime DC)
+ */
+function setupTextInput() {
+  try {
+    if (msgSend) {
+      msgSend.addEventListener('click', () => {
+        const t = (msgInput?.value || '').trim();
+        if (!t) return;
+        sendTextMessage(t);
+        msgInput.value = '';
+      });
+    }
+    if (msgInput) {
+      msgInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          const t = (msgInput?.value || '').trim();
+          if (!t) return;
+          sendTextMessage(t);
+          msgInput.value = '';
+        }
+      });
+    }
+  } catch {}
+}
+
+/**
+ * Queue and send a typed text prompt through Realtime
+ */
+function sendTextMessage(text) {
+  try {
+    // Open debug panel for visibility
+    try { const vdLog = document.getElementById('vdLog'); if (vdLog) vdLog.classList.add('expanded'); } catch {}
+    const t = String(text || '').trim();
+    if (!t) return;
+    // If not connected yet, start voice then queue
+    if (!voice.connected || !voice.dc || voice.dc.readyState !== 'open') {
+      window.LiveVoice._queuedText = window.LiveVoice._queuedText || [];
+      window.LiveVoice._queuedText.push(t);
+      // Start voice if not already starting
+      if (!voice.connecting && !voice.connected) startVoice();
+      return;
+    }
+    // Create a user message and ask for a response
+    try {
+      voice.dc.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [ { type: 'input_text', text: t } ]
+        }
+      }));
+      voice.dc.send(JSON.stringify({ type: 'response.create' }));
+    } catch {}
+    // Reflect in local HUD and debug
+    voiceAppendLine('You', t);
+    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'user.transcript', { text: t });
+    try { if (window.LiveTools?.checkPendingConfirm) window.LiveTools.checkPendingConfirm(t); } catch {}
+  } catch {}
+}
+
+/**
  * Setup push-to-talk functionality
  */
 function setupPushToTalk() {
@@ -658,7 +748,7 @@ window.LiveVoice = {
   voiceAppend,
   voiceAppendLine,
   setMicEnabled,
-  init: initVoice
+init: initVoice
 };
 
 // Auto-initialize when DOM is ready
