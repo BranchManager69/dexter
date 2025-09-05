@@ -454,6 +454,52 @@ export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
         const r = await uiFetch('/realtime/health'+session, { method:'GET', headers:{ 'x-agent-token': (process.env.TOKEN_AI_EVENTS_TOKEN||'') } });
         return res.json({ ok: r.ok, status: r.status, data: r.body });
       }
+      // Wallet tools (thin MCP bridge for local function tools)
+      if (name === 'list_managed_wallets') {
+        const search = String(args?.search || '');
+        const limit = Number.isFinite(Number(args?.limit)) ? Number(args.limit) : 100;
+        const offset = Number.isFinite(Number(args?.offset)) ? Number(args.offset) : 0;
+        const include_admin = !!args?.include_admin;
+        const out = await mcpCall('list_managed_wallets', { search, limit, offset, include_admin });
+        return res.json(out);
+      }
+      if (name === 'list_aliases') {
+        const out = await mcpCall('list_aliases', {});
+        return res.json(out);
+      }
+      if (name === 'add_wallet_alias') {
+        const wallet_id = String(args?.wallet_id || '');
+        const alias = String(args?.alias || '');
+        if (!wallet_id || !alias) return res.status(400).json({ ok:false, error:'missing_wallet_or_alias' });
+        const out = await mcpCall('add_wallet_alias', { wallet_id, alias });
+        return res.json(out);
+      }
+      if (name === 'set_default_wallet') {
+        // Pass through whatever selector the model provides
+        const payload = {};
+        for (const k of ['wallet_id','alias','wallet_alias','wallet_hint','wallet']) {
+          if (args?.[k] != null) payload[k] = args[k];
+        }
+        const out = await mcpCall('set_default_wallet', payload);
+        return res.json(out);
+      }
+      if (name === 'list_wallet_token_balances') {
+        const wallet_id = String(args?.wallet_id || '');
+        if (!wallet_id) return res.status(400).json({ ok:false, error:'missing_wallet_id' });
+        const min_ui = (args?.min_ui != null) ? Number(args.min_ui) : undefined;
+        const limit = (args?.limit != null) ? Number(args.limit) : undefined;
+        const payload = { wallet_id };
+        if (min_ui != null && Number.isFinite(min_ui)) payload.min_ui = min_ui;
+        if (limit != null && Number.isFinite(limit)) payload.limit = limit;
+        const out = await mcpCall('list_wallet_token_balances', payload);
+        return res.json(out);
+      }
+      if (name === 'get_wallet_holdings') {
+        const wallet_address = String(args?.wallet_address || '');
+        if (!wallet_address) return res.status(400).json({ ok:false, error:'missing_wallet_address' });
+        const out = await mcpCall('get_wallet_holdings', { wallet_address });
+        return res.json(out);
+      }
       if (name === 'get_token_ohlcv') {
         try {
           const mint = String(args?.mint || '').trim();

@@ -522,12 +522,13 @@ export function buildResponsesTools({ includeWebSearch, includeCodeInterpreter, 
       parameters: {
         type: 'object',
         properties: {
-          search: { type: 'string', description: 'Filter by label or public key (case-insensitive)' },
-          limit: { type: 'integer', description: 'Max items to return (1-500)', minimum: 1, maximum: 500 },
-          offset: { type: 'integer', description: 'Offset for pagination', minimum: 0 },
-          include_admin: { type: 'boolean', description: 'Include admin/superadmin-owned wallets (default false unless env flag on)' }
+          search: { type: 'string', description: 'Filter by label or public key (case-insensitive)', default: '' },
+          limit: { type: 'integer', description: 'Max items to return (1-500)', minimum: 1, maximum: 500, default: 100 },
+          offset: { type: 'integer', description: 'Offset for pagination', minimum: 0, default: 0 },
+          include_admin: { type: 'boolean', description: 'Include admin/superadmin-owned wallets', default: false }
         },
-        required: ['search','limit','offset','include_admin'],
+        // All parameters optional; defaults align with MCP server behavior
+        required: [],
         additionalProperties: false
       },
       strict: true

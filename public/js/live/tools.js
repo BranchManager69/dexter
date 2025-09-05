@@ -308,6 +308,23 @@ async function handleToolFrames(msg) {
       }
       return;
     }
+
+  // Some streams emit a final arguments.done frame that includes call_id.
+  // Capture it early to avoid deferring function_call_output unnecessarily.
+  if (msg.type === 'response.function_call_arguments.done') {
+    const itemId = msg.id || msg.item?.id || window.LiveTools?._currentCallId || null;
+    const callId = msg.call_id || msg.item?.call_id || null;
+    if (itemId && callId) {
+      toolMap.set(itemId, callId);
+      const rec = toolBuf.get(itemId);
+      if (rec) rec.callId = callId;
+      const pending = pendingOutputs.get(itemId);
+      if (pending) {
+        emitFunctionOutput({ itemId, callId, name: rec?.name || 'tool' }, pending);
+        pendingOutputs.delete(itemId);
+      }
+    }
+  }
     
   if (msg.type === 'response.function_call.arguments.delta' || msg.type === 'response.function_call_arguments.delta') {
     let id = msg.id || msg.call_id || (msg.item?.id) || null; 
