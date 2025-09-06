@@ -8,7 +8,7 @@ const vd = {
   statusEl: null,
   verboseBtn: null,
   logs: [],
-  verbose: true,
+  verbose: false,
   // Filters
   timeline: true,
   showTools: true,
@@ -35,6 +35,7 @@ const vd = {
     this.verboseBtn = document.getElementById('vdVerbose');
     
     this.setupEventListeners();
+    try { if (this.verboseBtn) { this.verboseBtn.setAttribute('data-on', this.verbose ? '1' : '0'); this.verboseBtn.textContent = 'Verbose: ' + (this.verbose ? 'On' : 'Off'); } } catch {}
     this.add('info', 'Voice debug ready');
   },
 
@@ -138,14 +139,44 @@ const vd = {
   add(level, msg, extra) {
     try {
       const ts = new Date().toISOString().slice(11, 19);
-      const line = { t: ts, level, msg: String(msg || ''), extra: extra || null };
+      const line = { t: ts, level, msg: String(msg || ''), extra: this._sanitize(extra) };
       this.logs.push(line);
-      if (this.logs.length > 500) this.logs.splice(0, this.logs.length - 500);
+      if (this.logs.length > 300) this.logs.splice(0, this.logs.length - 300);
       this.render(line);
       // enqueue for server
       this.uploadBuf.push(line); 
       this.scheduleFlush();
     } catch {}
+  },
+
+  // Redact tokens/SDP/large blobs from logs
+  _sanitize(data, depth = 0) {
+    if (!data) return data;
+    if (depth > 3) return '[…]';
+    try {
+      if (typeof data === 'string') {
+        // Redact ek_ ephemeral tokens and long JWTs
+        let s = data.replace(/ek_[A-Za-z0-9_-]{10,}/g, 'ek_…').replace(/eyJ[a-zA-Z0-9_\-]{20,}\.[a-zA-Z0-9_\-]{20,}\.[a-zA-Z0-9_\-]{10,}/g, 'jwt…');
+        // Redact userToken query param
+        s = s.replace(/(userToken=)[^&\s]+/g, '$1***');
+        // Truncate huge SDP blobs
+        if (s.length > 800) s = s.slice(0, 800) + '…';
+        return s;
+      }
+      if (Array.isArray(data)) return data.map(v => this._sanitize(v, depth + 1));
+      if (typeof data === 'object') {
+        const out = {}; 
+        for (const [k, v] of Object.entries(data)) {
+          const key = String(k).toLowerCase();
+          if (key.includes('token') || key.includes('client_secret')) { out[k] = '***'; continue; }
+          if (key === 'sdp') { out[k] = '[sdp…]'; continue; }
+          if (key === 'url' && typeof v === 'string') { out[k] = String(v).replace(/(userToken=)[^&\s]+/g, '$1***'); continue; }
+          out[k] = this._sanitize(v, depth + 1);
+        }
+        return out;
+      }
+      return data;
+    } catch { return data; }
   },
 
   render(last) {

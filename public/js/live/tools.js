@@ -268,7 +268,14 @@ async function handleToolFrames(msg) {
       if (callId) toolBuf.set(callId, rec);
       if (itemId && callId) toolMap.set(itemId, callId);
       try { window.LiveTools._currentCallId = itemId; } catch {}
-      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'tool created', { id: itemId, name });
+      // Avoid duplicate 'tool created' spam; this event sometimes mirrors 'function_call.created'
+      try {
+        window.LiveTools._seenToolCreates = window.LiveTools._seenToolCreates || new Set();
+        if (!window.LiveTools._seenToolCreates.has(itemId)) {
+          window.LiveTools._seenToolCreates.add(itemId);
+          if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'tool created', { id: itemId, name });
+        }
+      } catch {}
     }
   }
 
@@ -303,9 +310,13 @@ async function handleToolFrames(msg) {
     toolBuf.set(id, rec);
     if (callId) toolBuf.set(callId, rec);
       const callLabel = msg.callType === 'mcp' ? 'MCP tool' : 'tool';
-      if (window.LiveDebug?.vd) {
-        window.LiveDebug.vd.add('info', `${callLabel} created`, { id, name });
-      }
+      try {
+        window.LiveTools._seenToolCreates = window.LiveTools._seenToolCreates || new Set();
+        if (!window.LiveTools._seenToolCreates.has(id)) {
+          window.LiveTools._seenToolCreates.add(id);
+          if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', `${callLabel} created`, { id, name });
+        }
+      } catch {}
       return;
     }
 

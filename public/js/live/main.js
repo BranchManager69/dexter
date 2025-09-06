@@ -141,7 +141,7 @@ function setupGlobalEventHandlers() {
     // Setup API base detection event handler
     window.addEventListener('ai:api-base-detected', (e) => {
       if (window.LiveDebug?.vd) {
-        window.LiveDebug.vd.add('info', 'API base detected', { base: e.detail?.base || '/' });
+        window.LiveDebug.vd.add('frame', 'API base detected', { base: e.detail?.base || '/' });
       }
     });
     
@@ -239,12 +239,12 @@ function handleVisibilityChange() {
     if (document.hidden) {
       // Page is hidden, potentially pause some activities
       if (window.LiveDebug?.vd) {
-        window.LiveDebug.vd.add('info', 'page hidden');
+        window.LiveDebug.vd.add('frame', 'page hidden');
       }
     } else {
       // Page is visible, resume activities
       if (window.LiveDebug?.vd) {
-        window.LiveDebug.vd.add('info', 'page visible');
+        window.LiveDebug.vd.add('frame', 'page visible');
       }
     }
   } catch (error) {

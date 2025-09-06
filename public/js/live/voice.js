@@ -110,11 +110,8 @@ function voiceAppend(text) {
     }
   } catch {}
   
-  try { 
-    if (window.LiveDebug?.vd?.verbose) {
-      window.LiveDebug.vd.add('info', 'assistant.delta', { text: String(text || '').slice(0, 240) }); 
-    }
-  } catch {}
+  // Suppress per-token assistant delta logs; a final transcript is logged later.
+  try { /* no-op */ } catch {}
 }
 
 /**
@@ -130,11 +127,8 @@ function voiceAppendLine(prefix, text) {
     }
   } catch {}
   
-  try { 
-    if (window.LiveDebug?.vd?.verbose && prefix === 'You') {
-      window.LiveDebug.vd.add('info', 'user.transcript', { text: String(text || '').slice(0, 240) }); 
-    }
-  } catch {}
+  // Avoid duplicate user.transcript lines here; handleVoiceMessage logs it once.
+  try { /* no-op */ } catch {}
 }
 
 /**
@@ -146,7 +140,7 @@ async function startVoice() {
   voiceSetStatus('Starting…', 'warn'); 
   
   if (window.LiveDebug?.vd) {
-    window.LiveDebug.vd.add('info', 'startVoice()');
+    window.LiveDebug.vd.add('frame', 'startVoice()');
     // Animate the debug log expansion when voice starts
     const vdLog = document.getElementById('vdLog');
     if (vdLog) vdLog.classList.add('expanded');
@@ -159,14 +153,14 @@ async function startVoice() {
       if (window.X_USER_TOKEN) tokenHdr['x-user-token'] = String(window.X_USER_TOKEN); 
     } catch {}
     
-    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'POST /realtime/sessions');
+    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'POST /realtime/sessions');
     const r = await fetch(window.LiveUtils.api('/realtime/sessions'), { 
       method: 'POST', 
       headers: { 'content-type': 'application/json', ...tokenHdr }, 
       body: JSON.stringify({}) 
     });
     
-    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', '/realtime/sessions response', { status: r.status });
+    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', '/realtime/sessions response', { status: r.status });
     
     if (!r.ok) {
       const responseText = await r.text();
@@ -218,7 +212,7 @@ async function startVoice() {
     voice.audio.autoplay = true; 
     voice.audio.playsInline = true;
     
-    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'RTCPeerConnection created');
+    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'RTCPeerConnection created');
     
     try { 
       const mb = document.getElementById('modelbar'); 
@@ -230,7 +224,7 @@ async function startVoice() {
       try { 
         voice.audio.srcObject = e.streams[0]; 
         voice.audio.play().catch(() => {}); 
-        if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'ontrack: audio stream attached'); 
+        if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'ontrack: audio stream attached'); 
       } catch { 
         if (window.LiveDebug?.vd) window.LiveDebug.vd.add('warn', 'ontrack: attach failed'); 
       }
@@ -238,7 +232,7 @@ async function startVoice() {
     
     pc.oniceconnectionstatechange = () => {
       const s = pc.iceConnectionState;
-      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'iceConnectionState', { state: s });
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'iceConnectionState', { state: s });
       if (s === 'connected') { 
         voice.connected = true; 
         voiceSetStatus('On', 'ok'); 
@@ -250,7 +244,7 @@ async function startVoice() {
     
     pc.onconnectionstatechange = () => { 
       try { 
-        if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'connectionState', { state: pc.connectionState }); 
+        if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'connectionState', { state: pc.connectionState }); 
       } catch {} 
     };
 
@@ -267,11 +261,11 @@ async function startVoice() {
       }
     };
     
-    dc.onopen = () => { if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'dc open'); };
-    dc.onclose = () => { if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'dc close'); };
+    dc.onopen = () => { if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'dc open'); };
+    dc.onclose = () => { if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'dc close'); };
 
     // Microphone
-    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'requesting mic');
+    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'requesting mic');
     const ms = await navigator.mediaDevices.getUserMedia({ 
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
     });
@@ -283,7 +277,7 @@ async function startVoice() {
     try { 
       const dev = ms.getAudioTracks()[0]; 
       if (window.LiveDebug?.vd) {
-        window.LiveDebug.vd.add('info', 'mic ready', { 
+        window.LiveDebug.vd.add('frame', 'mic ready', { 
           label: dev?.label || '', 
           enabled: dev?.enabled, 
           muted: dev?.muted 
@@ -294,12 +288,12 @@ async function startVoice() {
     // Receive audio back
     pc.addTransceiver('audio', { direction: 'recvonly' });
 
-    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'creating offer');
+    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'creating offer');
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     
     if (window.LiveDebug?.vd) {
-      window.LiveDebug.vd.add('info', 'localDescription set', { 
+      window.LiveDebug.vd.add('frame', 'localDescription set', { 
         sdp: window.LiveDebug.vd.verbose ? offer.sdp.slice(0, 120) + '…' : undefined 
       });
     }
@@ -314,7 +308,7 @@ async function startVoice() {
       body: offer.sdp,
     });
     
-    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'SDP POST response', { status: sdpResp.status });
+    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'SDP POST response', { status: sdpResp.status });
     
     if (!sdpResp.ok) { 
       voiceSetStatus('Error', 'bad'); 
@@ -329,7 +323,7 @@ async function startVoice() {
     const answer = await sdpResp.text();
     await pc.setRemoteDescription({ type: 'answer', sdp: answer }); 
     
-    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'remoteDescription set');
+    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'remoteDescription set');
 
     // Once DC opens, fetch bootstrap and send session.update
     dc.onopen = async () => {
@@ -427,7 +421,7 @@ async function setupVoiceSession(dc, sessionInfo, model) {
     
     if (boot.tools.length) {
       // Defer sending tools until after MCP attach so we can combine both sets
-      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'tools loaded', { n: boot.tools.length });
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'tools loaded', { n: boot.tools.length });
     }
     
     // Attach MCP via proxy (MCP-first) and register only non-overlapping local tools
@@ -481,10 +475,16 @@ async function setupVoiceSession(dc, sessionInfo, model) {
         if (window.LiveTools) window.LiveTools.activeFunctionToolNames = activeNames;
       } catch {}
       if (window.LiveDebug?.vd) {
-        window.LiveDebug.vd.add('info', 'mcp attached', { url: absProxy, minted: !!minted });
+        let safeUrl = absProxy;
+        try {
+          const u = new URL(absProxy);
+          if (u.searchParams.has('userToken')) u.searchParams.set('userToken', '***');
+          safeUrl = u.origin + u.pathname + (u.search ? u.search : '');
+        } catch {}
+        window.LiveDebug.vd.add('info', 'mcp attached', { url: safeUrl, minted: !!minted });
         window.LiveDebug.vd.add('info', 'tools registered', { n: toolsUpdate.length, mcp: true, function: filteredLocal.length });
         try { if (window.LiveDebug?.vd?.setTools) window.LiveDebug.vd.setTools({ functionTools: filteredLocal, mcpTools, suppressedTools: suppressedLocal }); } catch {}
-        if (mcpTools.length) window.LiveDebug.vd.add('info', 'mcp tools imported', { count: mcpTools.length });
+        if (mcpTools.length) window.LiveDebug.vd.add('frame', 'mcp tools imported', { count: mcpTools.length });
         if (suppressedLocal.length) window.LiveDebug.vd.add('info', 'mcp suppressed locals', { count: suppressedLocal.length, names: suppressedLocal.map(t=>t.name).slice(0,12) });
       }
     } catch (e) {
@@ -569,7 +569,7 @@ function handleVoiceMessage(msg) {
   try {
     if (msg.type === 'response.output_item.added' && msg.item && (msg.item.type === 'mcp_list_tools' || msg.item.type === 'mcp_list_tools.completed')) {
       const n = Array.isArray(msg.item.tools) ? msg.item.tools.length : (Array.isArray(msg.item?.content?.tools) ? msg.item.content.tools.length : undefined);
-      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'mcp tools imported', { count: n });
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'mcp tools imported', { count: n });
     }
   } catch {}
 
@@ -751,7 +751,7 @@ function setupPushToTalk() {
           if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'ptt down');
           try { 
             voice.dc?.send(JSON.stringify({ type: 'response.cancel' })); 
-            if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'barge-in: response.cancel sent'); 
+            if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'barge-in: response.cancel sent'); 
           } catch {}
         }
       }
