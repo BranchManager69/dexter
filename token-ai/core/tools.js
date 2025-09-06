@@ -527,8 +527,9 @@ export function buildResponsesTools({ includeWebSearch, includeCodeInterpreter, 
           offset: { type: 'integer', description: 'Offset for pagination', minimum: 0, default: 0 },
           include_admin: { type: 'boolean', description: 'Include admin/superadmin-owned wallets', default: false }
         },
-        // All parameters optional; defaults align with MCP server behavior
-        required: [],
+        // OpenAI Responses strict tools require 'required' to enumerate all properties.
+        // Defaults allow the model to fill these automatically without user-provided args.
+        required: ['search','limit','offset','include_admin'],
         additionalProperties: false
       },
       strict: true
