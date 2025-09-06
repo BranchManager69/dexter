@@ -472,18 +472,10 @@ async function handleToolFrames(msg) {
         result = { ok: false, error: String(e?.message || e) }; 
       }
       
-      const brief = (() => { 
-        try { 
-          const s = JSON.stringify(result); 
-          return s.length > 400 ? s.slice(0, 400) + '…' : s; 
-        } catch { 
-          return String(result); 
-        }
-      })();
-      
       if (window.LiveDebug?.vd) {
-        const payload = { name: rec.name, result: brief };
-        try { if (!result?.ok) payload.args_raw = (rec.args || '').slice(0, 240); } catch {}
+        let resultOut = result;
+        try { if (typeof result === 'string') { try { resultOut = JSON.parse(result); } catch { resultOut = result; } } } catch {}
+        const payload = { name: rec.name, args: argsObj, result: resultOut };
         window.LiveDebug.vd.add(result?.ok ? 'info' : 'error', 'tool result', payload);
       }
       

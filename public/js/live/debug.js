@@ -8,7 +8,7 @@ const vd = {
   statusEl: null,
   verboseBtn: null,
   logs: [],
-  verbose: false,
+  verbose: true,
   // Filters
   timeline: true,
   showTools: true,
@@ -272,8 +272,30 @@ const vd = {
           } catch {}
         }
 
+        // Special rendering for transcripts
+        if (ln.msg === 'assistant.transcript' && ln.extra && ln.extra.text) {
+          div.style.color = '#d4e157';
+          div.textContent = `[${ln.t}] ASSISTANT: ${ln.extra.text}`;
+          el.appendChild(div); this._lastDiv = div; el.scrollTop = el.scrollHeight; return;
+        }
+        if (ln.msg === 'user.transcript' && ln.extra && ln.extra.text) {
+          div.style.color = '#80cbc4';
+          div.textContent = `[${ln.t}] YOU: ${ln.extra.text}`;
+          el.appendChild(div); this._lastDiv = div; el.scrollTop = el.scrollHeight; return;
+        }
+
+        // Special rendering for generic tool result lines
+        if (ln.msg === 'tool result' && ln.extra) {
+          const name = ln.extra.name || '';
+          const argsStr = ln.extra.args != null ? window.LiveUtils.safeJson(ln.extra.args) : '';
+          const resStr = ln.extra.result != null ? window.LiveUtils.safeJson(ln.extra.result) : '';
+          div.style.color = '#8ab4ff';
+          div.textContent = `[${ln.t}] TOOL ${name} args=${argsStr} result=${resStr}`;
+          el.appendChild(div); this._lastDiv = div; el.scrollTop = el.scrollHeight; return;
+        }
+
         // Default rendering for non-trade results
-        const extra = this.verbose && ln.extra ? (' ' + window.LiveUtils.safeJson(ln.extra)) : '';
+        const extra = ln.extra ? (' ' + window.LiveUtils.safeJson(ln.extra)) : '';
         div.textContent = `[${ln.t}] ${ln.level.toUpperCase()} ${ln.msg}${extra}`;
         
         // Click-to-copy convenience
