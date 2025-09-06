@@ -3,8 +3,8 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
-const URL = process.env.TOKEN_AI_MCP_URL || `http://localhost:${PORT}/mcp`;
+const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
+const URL = (process.env.TOKEN_AI_MCP_URL || `http://localhost:${PORT}/mcp`).replace(/\/$/, '');
 const TOKEN = process.env.TOKEN_AI_MCP_TOKEN || '';
 
 async function main(){

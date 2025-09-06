@@ -39,6 +39,7 @@
   <header>
     <h1>Dexter • Dashboard</h1>
     <div class="spacer"></div>
+    <span id="authbar" class="badge dim" title="Authentication status" style="margin-right:8px">Auth: …</span>
     <a class="cta" href="./agent-live.html">Open Live Trenching</a>
   </header>
   <main>
@@ -152,6 +153,7 @@ Finalize (important):
     </section>
   </main>
 
+  <script src="./js/auth.js?v=@ASSET@"></script>
   <script>
     (function(){
       const nowRow = document.getElementById('nowRow');

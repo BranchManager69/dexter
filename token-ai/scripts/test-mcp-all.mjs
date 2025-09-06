@@ -50,7 +50,7 @@ async function connectAndSmoke(baseUrl, headers){
 }
 
 async function main(){
-  const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
+  const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
   const BASE = (process.env.TOKEN_AI_MCP_PUBLIC_URL || `http://localhost:${PORT}/mcp`).replace(/\/$/,'');
   const ROOT = baseFrom(BASE);
   let failures = 0;
@@ -131,4 +131,3 @@ async function main(){
 }
 
 main().catch((e)=>{ console.error('test-mcp-all error:', e?.message || e); process.exit(1); });
-

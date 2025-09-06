@@ -12,6 +12,37 @@ const voice = {
   muted: false 
 };
 
+// Response gating to avoid overlapping response.create calls
+let responseActive = false;
+const responseQueue = [];
+
+function sendResponseCreate(payload = null) {
+  try {
+    if (!voice?.dc || voice.dc.readyState !== 'open') return;
+    const frame = payload ? { type: 'response.create', response: payload } : { type: 'response.create' };
+    if (responseActive) {
+      responseQueue.push(frame);
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'response.create queued');
+      return;
+    }
+    responseActive = true;
+    voice.dc.send(JSON.stringify(frame));
+    if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'sent response.create');
+  } catch {}
+}
+
+function flushResponseQueue() {
+  try {
+    if (responseActive) return;
+    const next = responseQueue.shift();
+    if (next && voice?.dc && voice.dc.readyState === 'open') {
+      responseActive = true;
+      voice.dc.send(JSON.stringify(next));
+      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'sent response.create (queued)');
+    }
+  } catch {}
+}
+
 // Bootstrap cache (ETag + data)
 const boot = { 
   etag: null, 
@@ -421,84 +452,33 @@ async function setupVoiceSession(dc, sessionInfo, model) {
     dc.send(JSON.stringify(frame)); 
     if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'session.update sent', { has_instructions: !!boot.instructions });
     
-    if (boot.tools.length) {
-      // Defer sending tools until after MCP attach so we can combine both sets
-      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('frame', 'tools loaded', { n: boot.tools.length });
-    }
-    
-    // Attach MCP via proxy (MCP-first) and register only non-overlapping local tools
+    // MCP-ONLY: attach only the MCP provider; do not register any local function tools
+    // Mint short-lived per-user token for MCP proxy
+    let minted = null;
     try {
-      let minted = null;
+      const hdr = { 'accept': 'application/json' };
+      try { const at = window.SUPABASE?.session?.access_token; if (at) hdr['authorization'] = `Bearer ${at}`; } catch {}
+      const r = await fetch(window.LiveUtils.api('/mcp-user-token'), { headers: hdr, cache: 'no-cache' });
+      if (r.ok) { const j = await r.json().catch(() => null); minted = j?.token || null; try { if (minted) window.X_USER_TOKEN = minted; } catch {} }
+    } catch {}
+
+    let mcpPath = '/mcp-proxy';
+    const tok = minted || (window.X_USER_TOKEN || '');
+    if (tok) mcpPath += `?userToken=${encodeURIComponent(String(tok))}`;
+    const absProxy = new URL(window.LiveUtils.api(mcpPath), location.origin).toString();
+
+    const toolsUpdate = [ { type:'mcp', server_label:'token-ai', server_url: absProxy, require_approval:'never' } ];
+    dc.send(JSON.stringify({ type:'session.update', session:{ tools: toolsUpdate } }));
+    try { if (window.LiveTools) window.LiveTools.activeFunctionToolNames = new Set(); } catch {}
+    if (window.LiveDebug?.vd) {
+      let safeUrl = absProxy;
       try {
-        const hdr = { 'accept': 'application/json' };
-        try { const at = window.SUPABASE?.session?.access_token; if (at) hdr['authorization'] = `Bearer ${at}`; } catch {}
-        const r = await fetch(window.LiveUtils.api('/mcp-user-token'), { headers: hdr, cache: 'no-cache' });
-        if (r.ok) { const j = await r.json().catch(() => null); minted = j?.token || null; try { if (minted) window.X_USER_TOKEN = minted; } catch {} }
+        const u = new URL(absProxy);
+        if (u.searchParams.has('userToken')) u.searchParams.set('userToken', '***');
+        safeUrl = u.origin + u.pathname + (u.search ? u.search : '');
       } catch {}
-
-      let mcpPath = '/mcp-proxy';
-      const tok = minted || (window.X_USER_TOKEN || '');
-      if (tok) mcpPath += `?userToken=${encodeURIComponent(String(tok))}`;
-      const absProxy = new URL(window.LiveUtils.api(mcpPath), location.origin).toString();
-
-      // Fetch MCP tool list to de-dupe local tools
-      let mcpTools = [];
-      try {
-        const hdr2 = { 'content-type': 'application/json' };
-        if (window.AGENT_TOKEN) hdr2['x-agent-token'] = String(window.AGENT_TOKEN);
-        if (window.X_USER_TOKEN) hdr2['x-user-token'] = String(window.X_USER_TOKEN);
-        const rt = await fetch(window.LiveUtils.api('/realtime/tool-call'), { method:'POST', headers: hdr2, body: JSON.stringify({ name:'mcp_tools_list', args:{} }) });
-        const jt = await rt.json().catch(()=>null);
-        if (jt?.ok && Array.isArray(jt.tools)) mcpTools = jt.tools;
-      } catch {}
-
-      const mcpNames = new Set();
-      for (const t of mcpTools) { const nm = t?.name || t?.tool?.name; if (nm) mcpNames.add(nm); }
-
-      // Keep ONLY debug/local utilities as function tools; EVERYTHING ELSE via MCP
-      // This makes Realtime immediately extensible by MCP without manual porting.
-      const localOnly = new Set(['get_latest_analysis','voice_health','voice_debug_save']);
-      const functionTools = Array.isArray(boot.tools) ? boot.tools.slice() : [];
-      const filteredLocal = functionTools.filter(t => {
-        const nm = t?.name || t?.tool?.name; if (!nm) return false;
-        if (localOnly.has(nm)) return true;
-        if (mcpNames.has(nm)) return false;
-        return true;
-      });
-      const suppressedLocal = functionTools.filter(t => {
-        const nm = t?.name || t?.tool?.name; if (!nm) return false;
-        if (localOnly.has(nm)) return false;
-        return mcpNames.has(nm);
-      });
-
-      const toolsUpdate = [ { type:'mcp', server_label:'token-ai', server_url: absProxy, require_approval:'never' }, ...filteredLocal ];
-      dc.send(JSON.stringify({ type:'session.update', session:{ tools: toolsUpdate } }));
-      try {
-        const activeNames = new Set((filteredLocal||[]).map(t => t?.name || t?.tool?.name).filter(Boolean));
-        if (window.LiveTools) window.LiveTools.activeFunctionToolNames = activeNames;
-      } catch {}
-      if (window.LiveDebug?.vd) {
-        let safeUrl = absProxy;
-        try {
-          const u = new URL(absProxy);
-          if (u.searchParams.has('userToken')) u.searchParams.set('userToken', '***');
-          safeUrl = u.origin + u.pathname + (u.search ? u.search : '');
-        } catch {}
-        window.LiveDebug.vd.add('info', 'mcp attached', { url: safeUrl, minted: !!minted });
-        window.LiveDebug.vd.add('info', 'tools registered', { n: toolsUpdate.length, mcp: true, function: filteredLocal.length });
-        try { if (window.LiveDebug?.vd?.setTools) window.LiveDebug.vd.setTools({ functionTools: filteredLocal, mcpTools, suppressedTools: suppressedLocal }); } catch {}
-        if (mcpTools.length) window.LiveDebug.vd.add('frame', 'mcp tools imported', { count: mcpTools.length });
-        if (suppressedLocal.length) window.LiveDebug.vd.add('info', 'mcp suppressed locals', { count: suppressedLocal.length, names: suppressedLocal.map(t=>t.name).slice(0,12) });
-      }
-    } catch (e) {
-      // MCP failed — fall back to local function tools only
-      const functionTools = Array.isArray(boot.tools) ? boot.tools.slice() : [];
-      dc.send(JSON.stringify({ type:'session.update', session:{ tools: functionTools } }));
-      try {
-        const activeNames = new Set((functionTools||[]).map(t => t?.name || t?.tool?.name).filter(Boolean));
-        if (window.LiveTools) window.LiveTools.activeFunctionToolNames = activeNames;
-      } catch {}
-      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('warn', 'mcp attach failed', { error: String(e?.message||e), fallback: 'local-tools' });
+      window.LiveDebug.vd.add('info', 'mcp attached', { url: safeUrl, minted: !!minted });
+      window.LiveDebug.vd.add('info', 'tools registered', { n: toolsUpdate.length, mcp: true, function: 0 });
     }
     
   } catch (e) { 
@@ -516,6 +496,8 @@ function handleVoiceMessage(msg) {
   if ((msg.type === 'response.delta' || msg.type === 'response.output_text.delta' || msg.type === 'response.text.delta') && typeof (msg.delta || msg.text) === 'string') {
     const seg = msg.delta || msg.text;
     voiceAppend(seg);
+    // Any assistant delta implies an active response
+    responseActive = true;
     // Buffer assistant text transcript; log once on response.text.done
     try { window.LiveVoice._bufText = (window.LiveVoice._bufText || '') + String(seg); } catch {}
   }
@@ -528,7 +510,12 @@ function handleVoiceMessage(msg) {
     try { window.LiveVoice._bufAudio = (window.LiveVoice._bufAudio || '') + String(seg); } catch {}
   }
   
-  if (msg.type === 'response.completed') voiceAppend('\n');
+  if (msg.type === 'response.completed') {
+    voiceAppend('\n');
+    // Mark response as finished and flush any queued frames
+    responseActive = false;
+    flushResponseQueue();
+  }
   
   // User transcript extraction
   try {
@@ -594,6 +581,13 @@ function handleVoiceMessage(msg) {
     } catch { 
       if (window.LiveDebug?.vd) window.LiveDebug.vd.add('error', 'realtime error'); 
     }
+    // If the error indicates an active response, set gate until we see done/completed
+    try {
+      const code = (msg?.error?.code || msg?.code || '').toString();
+      if (code === 'conversation_already_has_active_response') {
+        responseActive = true;
+      }
+    } catch {}
   }
   
   // Handle tool/MCP frames (arguments delta, completion, etc.)
@@ -604,6 +598,8 @@ function handleVoiceMessage(msg) {
   // Treat response.done as a completion marker too
   if (t === 'response.done') {
     try { voiceAppend('\n'); } catch {}
+    responseActive = false;
+    flushResponseQueue();
   }
 
   // Flush buffered assistant transcripts on done markers
@@ -747,7 +743,7 @@ function sendTextMessage(text) {
           content: [ { type: 'input_text', text: t } ]
         }
       }));
-      voice.dc.send(JSON.stringify({ type: 'response.create' }));
+      sendResponseCreate();
     } catch {}
     // Reflect in local HUD and debug
     voiceAppendLine('You', t);
@@ -809,6 +805,7 @@ window.LiveVoice = {
   voiceAppend,
   voiceAppendLine,
   setMicEnabled,
+  sendResponseCreate,
 init: initVoice
 };
 

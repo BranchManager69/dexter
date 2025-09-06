@@ -1530,7 +1530,7 @@ if (false) app.delete('/managed-wallets/aliases', async (req, res) => {
   }
 });
 
-// Dev helper: find DegenDuel users by nickname/username (local or token-gated)
+// Dev helper: find (?) users by nickname/username (local or token-gated)
 app.get('/dev/users/find', async (req, res) => {
   try {
     const ip = req.ip || req.connection?.remoteAddress || '';

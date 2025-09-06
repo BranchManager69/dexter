@@ -288,12 +288,12 @@ export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
         try { return { ok: r.ok, status: r.status, body: JSON.parse(txt) }; } catch { return { ok: r.ok, status: r.status, body: txt }; }
       }
       async function mcpCall(toolName, toolArgs){
-        const MCP_PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
+        const MCP_BASE = (process.env.TOKEN_AI_MCP_URL || `http://localhost:${Number(process.env.TOKEN_AI_MCP_PORT || 3930)}/mcp`).replace(/\/$/, '');
         const TOKEN = process.env.TOKEN_AI_MCP_TOKEN || '';
         const XUSER = String((req.headers['x-user-token']||'')).trim();
         const initBody = JSON.stringify({ jsonrpc:'2.0', id: '1', method:'initialize', params:{ clientInfo:{ name:'voice-bridge', version:'0.1' }, protocolVersion:'2024-11-05', capabilities:{} } });
         const ctrl = new AbortController();
-        const initResp = await fetch(`http://localhost:${MCP_PORT}/mcp`, {
+        const initResp = await fetch(`${MCP_BASE}`, {
           method:'POST',
           headers: { 'Authorization': TOKEN ? `Bearer ${TOKEN}` : '', ...(XUSER? { 'X-User-Token': XUSER } : {}), 'Accept':'application/json, text/event-stream', 'Content-Type':'application/json' },
           body: initBody,
@@ -304,23 +304,33 @@ export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
         try { ctrl.abort(); } catch {}
         if (!sid) return { ok:false, error:'mcp_no_session' };
         const callBody = JSON.stringify({ jsonrpc:'2.0', id:'2', method:'tools/call', params:{ name: toolName, arguments: toolArgs || {} } });
-        const r2 = await fetch(`http://localhost:${MCP_PORT}/mcp`, {
+        const r2 = await fetch(`${MCP_BASE}`, {
           method:'POST',
           headers: { 'Authorization': TOKEN ? `Bearer ${TOKEN}` : '', ...(XUSER? { 'X-User-Token': XUSER } : {}), 'Accept':'application/json', 'Content-Type':'application/json', 'Mcp-Session-Id': sid },
           body: callBody,
         });
         const txt = await r2.text();
-        try { return JSON.parse(txt); } catch { return { ok:false, error:'mcp_bad_json', raw: txt.slice(0,2000) }; }
+        // Parse JSON or SSE-encoded JSON (last data: line)
+        try { return JSON.parse(txt); } catch {
+          try {
+            const idx = txt.lastIndexOf('data: ');
+            if (idx >= 0) {
+              const json = txt.slice(idx + 6).trim();
+              return JSON.parse(json);
+            }
+          } catch {}
+          return { ok:false, error:'mcp_bad_json', raw: txt.slice(0,2000) };
+        }
       }
 
       if (name === 'mcp_tools_list') {
         try {
-          const MCP_PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
+          const MCP_BASE = (process.env.TOKEN_AI_MCP_URL || `http://localhost:${Number(process.env.TOKEN_AI_MCP_PORT || 3930)}/mcp`).replace(/\/$/, '');
           const TOKEN = process.env.TOKEN_AI_MCP_TOKEN || '';
           const XUSER = String((req.headers['x-user-token']||'')).trim();
           const initBody = JSON.stringify({ jsonrpc:'2.0', id: '1', method:'initialize', params:{ clientInfo:{ name:'voice-bridge', version:'0.1' }, protocolVersion:'2024-11-05', capabilities:{} } });
           const ctrl = new AbortController();
-          const initResp = await fetch(`http://localhost:${MCP_PORT}/mcp`, {
+          const initResp = await fetch(`${MCP_BASE}`, {
             method:'POST',
             headers: { 'Authorization': TOKEN ? `Bearer ${TOKEN}` : '', ...(XUSER? { 'X-User-Token': XUSER } : {}), 'Accept':'application/json, text/event-stream', 'Content-Type':'application/json' },
             body: initBody,
@@ -331,17 +341,55 @@ export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
           try { ctrl.abort(); } catch {}
           if (!sid) return res.status(502).json({ ok:false, error:'mcp_no_session' });
           const listBody = JSON.stringify({ jsonrpc:'2.0', id:'2', method:'tools/list', params:{} });
-          const r2 = await fetch(`http://localhost:${MCP_PORT}/mcp`, {
+          const r2 = await fetch(`${MCP_BASE}`, {
             method:'POST',
             headers: { 'Authorization': TOKEN ? `Bearer ${TOKEN}` : '', ...(XUSER? { 'X-User-Token': XUSER } : {}), 'Accept':'application/json', 'Content-Type':'application/json', 'Mcp-Session-Id': sid },
             body: listBody,
           });
           const txt = await r2.text();
-          let obj = null; try { obj = JSON.parse(txt); } catch {}
+          // Accept either plain JSON or SSE-encoded JSON
+          let obj = null;
+          try { obj = JSON.parse(txt); } catch {
+            try {
+              // Extract last data: {...} block from SSE stream
+              const idx = txt.lastIndexOf('data: ');
+              if (idx >= 0) {
+                const json = txt.slice(idx + 6).trim();
+                obj = JSON.parse(json);
+              }
+            } catch {}
+          }
           const tools = obj?.result?.tools || obj?.tools || [];
           return res.json({ ok:true, tools, raw: obj });
         } catch (e) {
           return res.status(502).json({ ok:false, error:'mcp_list_failed', details: String(e?.message||e) });
+        }
+      }
+
+      if (name === 'list_managed_wallets') {
+        try {
+          if (!req.aiUser || !req.aiUser.id) return res.status(401).json({ ok:false, error:'no_user_token' });
+          const { listManagedWallets } = await import('../../trade-manager/wallet-utils.js');
+          const includeAdmin = String(process.env.TOKEN_AI_EXPOSE_ADMIN_WALLETS || '0') === '1';
+          const externalUserId = (req.aiUser && req.aiUser.extUserId != null) ? req.aiUser.extUserId : null;
+          let wallets = await listManagedWallets({ externalUserId, includeAdmin });
+          // Optional filtering
+          const s = String((args?.search ?? '')).trim();
+          if (s) {
+            const q = s.toLowerCase();
+            wallets = wallets.filter(w => {
+              const name = String(w.wallet_name || '').toLowerCase();
+              const pk = String(w.public_key || '').toLowerCase();
+              return name.includes(q) || pk.startsWith(q) || pk.endsWith(q);
+            });
+          }
+          // Paging
+          let limit = Math.min(100, Math.max(1, parseInt(String(args?.limit ?? '25'), 10) || 25));
+          let offset = Math.max(0, parseInt(String(args?.offset ?? '0'), 10) || 0);
+          const slice = wallets.slice(offset, offset + limit);
+          return res.json({ ok:true, wallets: slice, total: wallets.length, limit, offset });
+        } catch (e) {
+          return res.status(500).json({ ok:false, error:'wallet_list_failed', details: e?.message || String(e) });
         }
       }
 
@@ -529,6 +577,24 @@ export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
           return res.status(500).json({ ok:false, error:'ohlcv_error', details: e?.message || String(e) });
         }
       }
+
+      // Forward common trade and wallet tools to MCP if not handled above
+      try {
+        const forwardNames = new Set([
+          'execute_buy','execute_sell','execute_sell_all',
+          'execute_buy_preview','execute_sell_preview',
+          'list_wallet_token_balances'
+        ]);
+        if (forwardNames.has(name)) {
+          // Sanitize empty-string search to undefined for MCP schemas that disallow ""
+          try { if (name === 'list_managed_wallets' && typeof args?.search === 'string' && args.search.trim() === '') { delete args.search; } } catch {}
+          const out = await mcpCall(name, args);
+          if (out && (out.result != null || out.ok)) {
+            return res.json({ ok:true, mcp: out });
+          }
+          return res.status(502).json({ ok:false, error: out?.error || 'mcp_forward_failed', mcp: out || null });
+        }
+      } catch {}
 
       return res.status(400).json({ ok:false, error:'unknown_tool' });
     } catch (e) {

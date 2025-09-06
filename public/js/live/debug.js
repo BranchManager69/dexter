@@ -51,6 +51,36 @@ const vd = {
       this.renderToolsOverlay();
     } catch {}
   },
+  _positionToolsOverlay() {
+    try {
+      const ov = document.getElementById('toolsOverlay');
+      if (!ov) return;
+      // Default anchor: top-left under the page header to avoid the Voice HUD (bottom-right)
+      let top = 54;
+      let right = '';
+      let bottom = '';
+      let left = 12;
+      // If the Voice Debug header is visible, anchor just below it so buttons remain clickable
+      try {
+        const head = document.querySelector('#voiceDebug .vd-head');
+        if (head) {
+          const r = head.getBoundingClientRect();
+          if (r && Number.isFinite(r.bottom)) top = Math.max(54, Math.round(r.bottom + 8));
+        }
+      } catch {}
+      // If the voice HUD is visible at bottom-right, prefer top-right anchoring to avoid overlap
+      try {
+        const hud = document.getElementById('voiceHud');
+        if (hud && getComputedStyle(hud).display !== 'none') {
+          bottom = ''; // ensure top anchoring
+        }
+      } catch {}
+      ov.style.top = top + 'px';
+      ov.style.right = right;
+      ov.style.left = left + 'px';
+      ov.style.bottom = bottom;
+    } catch {}
+  },
   renderToolsOverlay() {
     try {
       const ov = document.getElementById('toolsOverlay');
@@ -419,6 +449,7 @@ const vd = {
           const ov = document.getElementById('toolsOverlay');
           if (ov) {
             ov.style.display = 'block';
+            this._positionToolsOverlay();
             this.renderToolsOverlay();
           }
         } catch {}
@@ -429,7 +460,7 @@ const vd = {
           const ov = document.getElementById('toolsOverlay');
           if (ov) {
             ov.style.display = (ov.style.display === 'none' || !ov.style.display) ? 'block' : 'none';
-            if (ov.style.display === 'block') this.renderToolsOverlay();
+            if (ov.style.display === 'block') { this._positionToolsOverlay(); this.renderToolsOverlay(); }
           }
         } catch {}
       });

@@ -82,6 +82,7 @@
         <button id="debugLoadBtn" title="Load Debug Report" style="background:transparent;border:none;color:#9fb2c8;cursor:pointer;font-size:14px;padding:2px 6px">📁</button>
         <span id="connbar" class="badge">Connecting…</span>
         <span id="runsbar" class="badge dim">Active: 0/3</span>
+        <span id="authbar" class="badge dim" title="Authentication status">Auth: …</span>
       </div>
     </div>
 
@@ -363,7 +364,7 @@
     </div>
     <div id="walletList" style="padding:8px 10px; display:grid; gap:8px"></div>
   </div>
-  <div id="toolsOverlay" style="display:none; position:fixed; right:12px; top:54px; width:460px; max-height:70vh; overflow:auto; background:#0f1117; border:1px solid #1a1e27; border-radius:8px; z-index:10000; box-shadow:0 8px 20px rgba(0,0,0,.35)">
+  <div id="toolsOverlay" style="display:none; position:fixed; right:12px; bottom:12px; width:460px; max-height:70vh; overflow:auto; background:#0f1117; border:1px solid #1a1e27; border-radius:8px; z-index:10000; box-shadow:0 8px 20px rgba(0,0,0,.35)">
     <div style="display:flex; align-items:center; gap:8px; padding:8px 10px; border-bottom:1px solid #1a1e27; background:#0f1117; position:sticky; top:0">
       <strong style="font-size:12px">MCP & Function Tools</strong>
       <span id="toolsCount" class="vd-badge" style="margin-left:auto">0</span>
@@ -386,6 +387,7 @@
   <script type="module" src="/js/live/forms.js?v=@ASSET@"></script>
   <script type="module" src="/js/live/panels.js?v=@ASSET@"></script>
   <script type="module" src="/js/live/main.js?v=@ASSET@"></script>
+  <script src="/js/auth.js?v=@ASSET@"></script>
 
   <script>
     // Optional Supabase bootstrap: fetch config, init client, and hold session

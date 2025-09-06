@@ -1,5 +1,14 @@
 import { jwtVerifyHS256 } from '../utils/jwt.js';
 
+function resolveMcpBase() {
+  try {
+    const url = (process.env.TOKEN_AI_MCP_URL || '').trim();
+    if (url) return url.replace(/\/$/, '');
+  } catch {}
+  const port = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
+  return `http://127.0.0.1:${port}/mcp`;
+}
+
 // Build OAuth metadata for ChatGPT MCP (served at host root and under /mcp-proxy)
 function buildUiOauthMeta(req) {
   // Prefer explicit public URL from env; else derive from request
@@ -85,9 +94,9 @@ export function registerMcpProxyRoutes(app) {
   // Proxy OAuth flows under /mcp-proxy to the local MCP server endpoints
   app.all('/mcp-proxy/authorize', async (req, res) => {
     try {
-      const port = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
+      const base = resolveMcpBase();
       const qs = req.originalUrl.split('?')[1] || '';
-      const target = `http://127.0.0.1:${port}/mcp/authorize${qs ? ('?' + qs) : ''}`;
+      const target = `${base}/authorize${qs ? ('?' + qs) : ''}`;
       const r = await fetch(target, { method: 'GET', headers: { 'accept': 'text/html' }, redirect: 'manual' });
       if (r.status >= 300 && r.status < 400) {
         let loc = r.headers.get('location') || '';
@@ -108,8 +117,8 @@ export function registerMcpProxyRoutes(app) {
 
   app.all('/mcp-proxy/token', async (req, res) => {
     try {
-      const port = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
-      const target = `http://127.0.0.1:${port}/mcp/token`;
+      const base = resolveMcpBase();
+      const target = `${base}/token`;
       const bodyRaw = await new Promise((resolve) => { let data=''; req.on('data', c=> data+=c.toString()); req.on('end', ()=> resolve(data)); req.on('error', ()=> resolve('')); });
       const body = bodyRaw && bodyRaw.length ? bodyRaw : (typeof req.body === 'string' ? req.body : new URLSearchParams(req.body || {}).toString());
       const r = await fetch(target, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
@@ -124,8 +133,8 @@ export function registerMcpProxyRoutes(app) {
 
   app.all('/mcp-proxy/userinfo', async (req, res) => {
     try {
-      const port = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
-      const target = `http://127.0.0.1:${port}/mcp/userinfo`;
+      const base = resolveMcpBase();
+      const target = `${base}/userinfo`;
       const hdr = new Headers();
       const incomingAuth = req.headers['authorization'];
       if (incomingAuth) hdr.set('authorization', Array.isArray(incomingAuth) ? incomingAuth.join(',') : String(incomingAuth));
@@ -211,9 +220,48 @@ export function registerMcpProxyRoutes(app) {
       if (!(accept.includes('application/json') && accept.includes('text/event-stream'))) {
         hdr.set('accept', 'application/json, text/event-stream');
       }
-      // Body
+      // Body and special-case handling for simple tools
       let body = undefined;
       if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
+        // Intercept a subset of tools/call to serve locally without strict schemas
+        try {
+          const isJson = (req.headers['content-type']||'').toString().includes('application/json');
+          const b = isJson ? (req.body || null) : null;
+          if (b && b.jsonrpc && b.method === 'tools/call' && b.params && b.params.name === 'list_managed_wallets') {
+            // Derive external user id from header or JWT
+            let extUserId = '';
+            try {
+              const qTok = String(req.query.userToken || '').trim();
+              const hTok = String(req.headers['x-user-token'] || '').trim();
+              const secret = process.env.MCP_USER_JWT_SECRET || process.env.TOKEN_AI_EVENTS_TOKEN || '';
+              if (qTok && secret) {
+                const payload = jwtVerifyHS256(qTok, secret);
+                if (payload && (payload.sub || payload.user_id)) extUserId = String(payload.sub || payload.user_id);
+              } else if (hTok) {
+                extUserId = hTok;
+              }
+            } catch {}
+            const { listManagedWallets } = await import('../../trade-manager/wallet-utils.js');
+            const includeAdmin = String(process.env.TOKEN_AI_EXPOSE_ADMIN_WALLETS || '0') === '1';
+            let wallets = await listManagedWallets({ externalUserId: extUserId || null, includeAdmin });
+            const args = (b.params && b.params.arguments) || {};
+            try {
+              const s = String((args.search ?? '')).trim().toLowerCase();
+              if (s) {
+                wallets = wallets.filter(w => {
+                  const name = String(w.wallet_name || '').toLowerCase();
+                  const pk = String(w.public_key || '').toLowerCase();
+                  return name.includes(s) || pk.startsWith(s) || pk.endsWith(s);
+                });
+              }
+              let limit = Math.min(100, Math.max(1, parseInt(String(args.limit ?? '25'), 10) || 25));
+              let offset = Math.max(0, parseInt(String(args.offset ?? '0'), 10) || 0);
+              wallets = wallets.slice(offset, offset + limit);
+            } catch {}
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            return res.end(JSON.stringify({ jsonrpc:'2.0', id: b.id || '2', result: { structuredContent: { wallets }, content: [{ type:'text', text: JSON.stringify(wallets) }] } }));
+          }
+        } catch {}
         body = req.body ? JSON.stringify(req.body) : undefined;
         if (!hdr.get('content-type')) hdr.set('content-type', 'application/json');
       }

@@ -45,6 +45,24 @@
 - Logs: `sudo journalctl -u dexter-ui -f` / `sudo journalctl -u dexter-mcp -f`
 - Notes: Production runs under systemd. Local ad‑hoc runs via `node server.js` are fine for development.
 
+Important
+- Use systemd only in prod. Do not use pm2 for `dexter-ui` or `dexter-mcp`.
+- Default ports: UI `3017`, MCP `3930`.
+- After client‑side Realtime code changes, restart both services and hard‑refresh the browser to load updated assets.
+
+## Realtime Voice Agent
+- Response gating: the client queues `response.create` to prevent `conversation_already_has_active_response`. One response at a time; queued items flush on `response.done`/`response.completed`.
+- MCP‑first tools: the session registers the MCP server and suppresses overlapping local function tools so trading calls execute via MCP (avoids local `unknown_tool` loops).
+- Tool output wiring: the client only emits `function_call_output` for active local tools. MCP calls are executed server‑side and summarized in the debug panel.
+- Debug panel: the “Tools” overlay opens below the Voice Debug header so it never covers the Voice HUD.
+
+## MCP Tooling Semantics
+- list_managed_wallets: zero‑input list of the current user’s wallets.
+  - Optional filters: `search` (partial label or key prefix/suffix), `limit`, `offset`.
+  - If `search` is an empty string, the bridge normalizes it to “no filter”.
+- Trading tools (execute_buy / execute_sell / previews): routed to MCP; UI does not execute these locally.
+- SSE compatibility: the bridge parses SSE `data:` frames from MCP; JSON parsing errors like `mcp_bad_json` should not occur in normal operation.
+
 ## Events, WebSocket, and Runner API
 
 These interfaces are stable and UI-agnostic so they can be relied on by dashboards, CLIs, or other services.

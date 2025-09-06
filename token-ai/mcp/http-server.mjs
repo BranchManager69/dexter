@@ -17,7 +17,7 @@ try {
   dotenv.config({ path: path.join(TA_ROOT, '.env') });
 } catch {}
 
-const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
+const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
 const TOKEN = process.env.TOKEN_AI_MCP_TOKEN || '';
 const CORS_ORIGIN = process.env.TOKEN_AI_MCP_CORS || '*';
 

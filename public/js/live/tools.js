@@ -26,10 +26,9 @@ function emitFunctionOutput(rec, outputData) {
       }));
     }
     if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'sent function_call_output', { call_id: callId });
-    // Trigger a response so the model speaks about the result
-    if (window.LiveVoice?.voice?.dc) {
-      window.LiveVoice.voice.dc.send(JSON.stringify({ type: 'response.create' }));
-      if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'sent response.create');
+    // Trigger a response so the model speaks about the result (gated)
+    if (window.LiveVoice?.sendResponseCreate) {
+      window.LiveVoice.sendResponseCreate();
     }
     return true;
   } catch {
@@ -139,11 +138,8 @@ async function checkPendingConfirm(text) {
         const addrShort = choice.address ? `${choice.address.slice(0, 4)}…${choice.address.slice(-4)}` : '';
         const lab = `${choice.symbol || choice.name || 'token'} ${addrShort}`;
         
-        if (window.LiveVoice?.voice?.dc) {
-          window.LiveVoice.voice.dc.send(JSON.stringify({ 
-            type: 'response.create', 
-            response: { instructions: `Selected ${lab}. Say "yes" to start analysis, or "no" to cancel.` } 
-          }));
+        if (window.LiveVoice?.sendResponseCreate) {
+          window.LiveVoice.sendResponseCreate({ instructions: `Selected ${lab}. Say "yes" to start analysis, or "no" to cancel.` });
         }
         
         if (window.LiveDebug?.vd) {
@@ -161,43 +157,21 @@ async function checkPendingConfirm(text) {
     if (isYes(text)) {
       const sel = pendingConfirm; 
       pendingConfirm = null;
-      const hdr = { 'content-type': 'application/json' }; 
-      try { 
-        if (window.AGENT_TOKEN) hdr['x-agent-token'] = String(window.AGENT_TOKEN); 
-        if (window.X_USER_TOKEN) hdr['x-user-token'] = String(window.X_USER_TOKEN); 
-      } catch {}
-      // No transcript-based fallback — require proper tool arguments
+      const addrShort = sel.address ? `${sel.address.slice(0, 4)}…${sel.address.slice(-4)}` : '';
+      const lab = `${sel.symbol || sel.name || 'token'} ${addrShort}`;
 
+      // MCP-ONLY: ask the model to call the MCP tool 'run_agent' with the selected mint
       try {
-        const r = await fetch(window.LiveUtils.api('/realtime/tool-call'), { 
-          method: 'POST', 
-          headers: hdr, 
-          body: JSON.stringify({ name: 'run_agent', args: { mint: sel.address } }) 
-        });
-        const j = await r.json().catch(() => ({}));
-        const addrShort = sel.address ? `${sel.address.slice(0, 4)}…${sel.address.slice(-4)}` : '';
-        const lab = `${sel.symbol || sel.name || 'token'} ${addrShort}`;
-        const msg = j?.ok ? `Starting analysis for ${lab}.` : `Failed to start analysis for ${lab}.`;
-        
         if (window.LiveVoice?.voice?.dc) {
-          window.LiveVoice.voice.dc.send(JSON.stringify({ 
-            type: 'response.create', 
-            response: { instructions: msg } 
-          }));
-        }
-        
-        if (window.LiveDebug?.vd) {
-          window.LiveDebug.vd.add(j?.ok ? 'info' : 'error', 'confirm->run_agent', { 
-            mint: sel.address, 
-            result: j 
-          });
+          const dc = window.LiveVoice.voice.dc;
+          dc.send(JSON.stringify({ type: 'conversation.input_text', text: `Call tool run_agent with { "mint": "${sel.address}" } and confirm start.` }));
+          if (window.LiveVoice?.sendResponseCreate) {
+            window.LiveVoice.sendResponseCreate({ instructions: `Starting analysis for ${lab}.` });
+          }
+          if (window.LiveDebug?.vd) window.LiveDebug.vd.add('info', 'confirm->run_agent (mcp)', { mint: sel.address });
         }
       } catch (e) {
-        if (window.LiveDebug?.vd) {
-          window.LiveDebug.vd.add('error', 'confirm->run_agent error', { 
-            error: String(e?.message || e) 
-          });
-        }
+        if (window.LiveDebug?.vd) window.LiveDebug.vd.add('error', 'confirm->run_agent (mcp) failed', { error: String(e?.message || e) });
       }
       return true;
     }
@@ -208,11 +182,8 @@ async function checkPendingConfirm(text) {
       const addrShort = sel.address ? `${sel.address.slice(0, 4)}…${sel.address.slice(-4)}` : '';
       const lab = `${sel.symbol || sel.name || 'token'} ${addrShort}`;
       
-      if (window.LiveVoice?.voice?.dc) {
-        window.LiveVoice.voice.dc.send(JSON.stringify({ 
-          type: 'response.create', 
-          response: { instructions: `Cancelled ${lab}. You can say another token name or symbol.` } 
-        }));
+      if (window.LiveVoice?.sendResponseCreate) {
+        window.LiveVoice.sendResponseCreate({ instructions: `Cancelled ${lab}. You can say another token name or symbol.` });
       }
       
       if (window.LiveDebug?.vd) {
@@ -491,46 +462,7 @@ async function handleToolFrames(msg) {
         window.LiveDebug.vd.add(result?.ok ? 'info' : 'error', 'tool result', payload);
       }
       
-      // Confirmation flow for token resolution
-      if (rec.name === 'resolve_token') {
-        try {
-          const items = Array.isArray(result?.results) ? result.results : [];
-          lastResolveList = items;
-
-          // Always close out the tool call so the model doesn't retry.
-          try {
-            const outputData = result?.mcp || result || { ok: false, error: 'no_result' };
-            emitFunctionOutput(rec, outputData);
-          } catch {}
-
-          if (items.length === 0) {
-            if (window.LiveVoice?.voice?.dc) {
-              window.LiveVoice.voice.dc.send(JSON.stringify({
-                type: 'response.create',
-                response: { instructions: `I couldn't find a token for "${argsObj?.query || ''}". Please say a different name or symbol.` }
-              }));
-            }
-          } else {
-            pendingCandidates = items.slice(0, 5);
-            // Speak top 3 options with distinguishing info
-            const top3 = pendingCandidates.slice(0, 3).map((it, i) => {
-              const addrShort = it.address ? `${it.address.slice(0, 4)}…${it.address.slice(-4)}` : '';
-              const liq = (Number(it.liquidity_usd || 0) || 0);
-              const liqTxt = liq >= 1_000_000 ? (`$${(liq / 1_000_000).toFixed(1)}m`) : (liq >= 1_000 ? (`$${(liq / 1_000).toFixed(0)}k`) : (`$${liq.toFixed(0)}`));
-              return `${i + 1}) ${it.symbol || it.name || 'token'} ${addrShort} • liq ${liqTxt}`;
-            }).join('; ');
-            const instr = `I found these: ${top3}. Say a number (1-3), or say the last four of the address, or approximate liquidity (e.g., $2m).`;
-
-            if (window.LiveVoice?.voice?.dc) {
-              window.LiveVoice.voice.dc.send(JSON.stringify({
-                type: 'response.create',
-                response: { instructions: instr }
-              }));
-            }
-          }
-        } catch {}
-        return;
-      }
+      // MCP-only: no special confirmation flow for resolve_token; agent decides next tools
       
       // Send function_call_output back to OpenAI using the real call_id, or defer
       const outputData = result?.mcp || result || { ok: false, error: 'no_result' };

@@ -7,7 +7,7 @@ import http from 'node:http';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
+const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
 const BASE = process.env.TOKEN_AI_MCP_PUBLIC_URL || `http://localhost:${PORT}/mcp`;
 const MCP_URL = `http://localhost:${PORT}/mcp`;
 

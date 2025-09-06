@@ -18,7 +18,7 @@ try {
   dotenv.config({ path: path.join(TA_ROOT, '.env') });
 } catch {}
 
-const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
+const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
 const TOKEN = process.env.TOKEN_AI_MCP_TOKEN || '';
 const CORS_ORIGIN = process.env.TOKEN_AI_MCP_CORS || '*';
 
@@ -113,7 +113,7 @@ function effectiveBaseUrl(req){
     const proto = String(req.headers['x-forwarded-proto'] || '').toLowerCase() || 'http';
     if (host) return `${proto}://${host}/mcp`.replace(/\/$/, '');
   } catch {}
-  return 'http://localhost:3928/mcp';
+  return `http://localhost:${PORT}/mcp`;
 }
 
 function getProviderConfig(req) {
@@ -149,7 +149,7 @@ function getProviderConfig(req) {
   }
   // Built-in lightweight provider (no external IdP) if OAuth is enabled but nothing configured
   if (OAUTH_ENABLED) {
-    const base = (req ? effectiveBaseUrl(req) : (PUBLIC_URL||'http://localhost:3928/mcp')).replace(/\/$/,'');
+  const base = (req ? effectiveBaseUrl(req) : (PUBLIC_URL||`http://localhost:${PORT}/mcp`)).replace(/\/$/,'');
     return {
       type: 'oidc',
       issuer: base,
