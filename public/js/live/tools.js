@@ -422,7 +422,7 @@ async function handleToolFrames(msg) {
           }
 
           // Build a compact result payload for the debug panel
-          const payload = { mcp: {} };
+          const payload = { name: rec.name, args: argsObj, mcp: {} };
           if (txHash) {
             payload.mcp.tx_hash = txHash;
             payload.mcp.solscan_url = `https://solscan.io/tx/${txHash}`;
@@ -430,12 +430,16 @@ async function handleToolFrames(msg) {
           // If we couldn't parse a tx, still emit a marker so the panel shows completion
           if (!txHash && rawOut) payload.mcp.raw = String(rawOut).slice(0, 2000);
 
+          // If the frame included an error object, surface it
+          try {
+            const err = msg.error || msg.item?.error || msg.item?.content?.error;
+            if (err) payload.error = err;
+          } catch {}
+
           if (window.LiveDebug?.vd) {
-            window.LiveDebug.vd.add('info', 'tool result', {
-              name: rec.name,
-              // Do not truncate: keep JSON intact so the panel can parse tx_hash
-              result: JSON.stringify(payload)
-            });
+            const lvl = payload.error ? 'error' : 'info';
+            // Send full payload; debug renderer will pretty-print name/args/result
+            window.LiveDebug.vd.add(lvl, 'tool result', payload);
           }
         } catch (e) {
           try { if (window.LiveDebug?.vd) window.LiveDebug.vd.add('warn', 'mcp result parse failed', { error: String(e?.message || e) }); } catch {}
@@ -460,13 +464,20 @@ async function handleToolFrames(msg) {
       } catch {}
       
       let result = null;
+      let http = null;
       try {
         const r = await fetch(window.LiveUtils.api('/realtime/tool-call'), { 
           method: 'POST', 
           headers: hdr, 
           body: JSON.stringify({ name: rec.name, args: argsObj }) 
         });
-        const j = await r.json(); 
+        http = { status: r.status };
+        let j = null;
+        try { 
+          j = await r.json();
+        } catch {
+          try { const t = await r.text(); j = { ok: false, error: 'non_json', body: (t || '').slice(0, 800) }; } catch { j = { ok: false, error: 'no_body' }; }
+        }
         result = j;
       } catch (e) { 
         result = { ok: false, error: String(e?.message || e) }; 
@@ -476,6 +487,7 @@ async function handleToolFrames(msg) {
         let resultOut = result;
         try { if (typeof result === 'string') { try { resultOut = JSON.parse(result); } catch { resultOut = result; } } } catch {}
         const payload = { name: rec.name, args: argsObj, result: resultOut };
+        if (http) payload.http = http;
         window.LiveDebug.vd.add(result?.ok ? 'info' : 'error', 'tool result', payload);
       }
       

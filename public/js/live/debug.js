@@ -294,6 +294,23 @@ const vd = {
           el.appendChild(div); this._lastDiv = div; el.scrollTop = el.scrollHeight; return;
         }
 
+        // Expanded rendering for realtime error frames
+        if (ln.msg === 'realtime error') {
+          try {
+            let summary = '';
+            const e = ln.extra || {};
+            const code = e.code || e.type || e.error || '';
+            const msg = e.message || e.msg || e.detail || '';
+            if (code || msg) {
+              summary = `${code || 'error'}${msg ? (': ' + msg) : ''}`;
+            }
+            const details = window.LiveUtils.safeJson(e);
+            div.style.color = '#ff9b9b';
+            div.textContent = `[${ln.t}] ERROR realtime error ${summary ? ('(' + summary + ') ') : ''}${details ? details : ''}`;
+            el.appendChild(div); this._lastDiv = div; el.scrollTop = el.scrollHeight; return;
+          } catch {}
+        }
+
         // Default rendering for non-trade results
         const extra = ln.extra ? (' ' + window.LiveUtils.safeJson(ln.extra)) : '';
         div.textContent = `[${ln.t}] ${ln.level.toUpperCase()} ${ln.msg}${extra}`;
@@ -389,6 +406,23 @@ const vd = {
       };
 
       setupButton('vdClear', () => this.clear());
+      // Traces toggle inside Voice Debug
+      setupButton('vdTraces', () => {
+        try {
+          const pnl = document.getElementById('tracesPanel');
+          if (pnl) pnl.style.display = (pnl.style.display === 'none' || !pnl.style.display) ? 'block' : 'none';
+        } catch {}
+      });
+      // Quick Tools overlay button in the Voice Debug header
+      setupButton('vdToolsBtn', () => {
+        try {
+          const ov = document.getElementById('toolsOverlay');
+          if (ov) {
+            ov.style.display = 'block';
+            this.renderToolsOverlay();
+          }
+        } catch {}
+      });
       // Tools overlay toggle
       setupButton('vdToolList', () => {
         try {

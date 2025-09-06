@@ -56,8 +56,48 @@ const VOICE_DIR = path.join(TOKEN_AI_DIR, 'reports', 'voice-debug');
 let RUNTIME_DEFAULT_WALLET_ID = process.env.TOKEN_AI_DEFAULT_WALLET_ID || '';
 let DEV_X_USER_TOKEN = '';
 
+// Compute an asset version for cache-busting (git short SHA or timestamp)
+function computeAssetVersion() {
+  try {
+    if (process.env.TOKEN_AI_ASSET_VERSION) return String(process.env.TOKEN_AI_ASSET_VERSION);
+    const gitDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', '.git');
+    const headPath = path.join(gitDir, 'HEAD');
+    const head = fs.readFileSync(headPath, 'utf8').trim();
+    let ref = null;
+    const m = head.match(/^ref:\s*(.*)$/);
+    if (m) {
+      ref = path.join(gitDir, m[1]);
+    }
+    const sha = (ref && fs.existsSync(ref)) ? fs.readFileSync(ref, 'utf8').trim() : head;
+    if (sha && sha.length >= 7) return sha.slice(0, 12);
+  } catch {}
+  return 'r' + Math.floor(Date.now() / 1000);
+}
+const ASSET_VER = computeAssetVersion();
+
 // Serve static live pages from the repo's root public directory
 const PUB_DIR = path.resolve(TOKEN_AI_DIR, '..', 'public');
+
+// Dynamic HTML route with cache-busted asset placeholders for ALL public .html pages
+app.get(/\/(.*\.html)$/i, (req, res, next) => {
+  try {
+    const rel = req.params[0];
+    const file = path.join(PUB_DIR, rel);
+    if (!fs.existsSync(file)) return next();
+    let html = fs.readFileSync(file, 'utf8');
+    html = html.replace(/@ASSET@/g, ASSET_VER);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    // Prevent stale HTML so new ASSET_VER propagates promptly
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.end(html);
+  } catch (e) {
+    try { return next(e); } catch {}
+  }
+});
+
+// Static files (JS/CSS/images)
 app.use('/', express.static(PUB_DIR));
 
 // Quick landing links
@@ -1131,7 +1171,10 @@ app.get('/agent-env.js', (req, res) => {
     let userToken = process.env.TOKEN_AI_DEV_USER_TOKEN || DEV_X_USER_TOKEN || '';
     if (!userToken) { DEV_X_USER_TOKEN = 'dev_' + Math.random().toString(36).slice(2, 10); userToken = DEV_X_USER_TOKEN; }
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-    res.end(`(function(){ try { ${token ? `window.AGENT_TOKEN=${JSON.stringify(token)};` : ''} ${base ? `window.AGENT_BASE=${JSON.stringify(base)};` : ''} ${defaultWallet ? `window.DEFAULT_WALLET_ID=${JSON.stringify(defaultWallet)};` : ''} ${userToken ? `window.X_USER_TOKEN=${JSON.stringify(userToken)};` : ''} ${mcpUrl ? `window.MCP_URL=${JSON.stringify(mcpUrl)};` : ''} window.OPENAI_KEY_PRESENT=${openaiPresent ? 'true':'false'}; } catch(e){} })();`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.end(`(function(){ try { ${token ? `window.AGENT_TOKEN=${JSON.stringify(token)};` : ''} ${base ? `window.AGENT_BASE=${JSON.stringify(base)};` : ''} ${defaultWallet ? `window.DEFAULT_WALLET_ID=${JSON.stringify(defaultWallet)};` : ''} ${userToken ? `window.X_USER_TOKEN=${JSON.stringify(userToken)};` : ''} ${mcpUrl ? `window.MCP_URL=${JSON.stringify(mcpUrl)};` : ''} window.OPENAI_KEY_PRESENT=${openaiPresent ? 'true':'false'}; window.ASSET_VER=${JSON.stringify(ASSET_VER)}; } catch(e){} })();`);
   } catch (e) {
     try { res.status(500).end('// agent-env error'); } catch {}
   }

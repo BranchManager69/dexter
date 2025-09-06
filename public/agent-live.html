@@ -6,7 +6,7 @@
   <style>input,select,textarea,button{font-size:16px}</style>
   <title>Dexter • Live Trencher</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <script src="/agent-env.js?v=1"></script>
+  <script src="/agent-env.js?v=@ASSET@"></script>
   <style>
     html { max-width:100%; overflow-x:hidden; }
     body { max-width:100%; }
@@ -79,10 +79,7 @@
         </form>
       </div>
       <div class="row" style="margin-left:auto; gap:8px">
-        <span id="modelbar" class="badge dim">Model: —</span>
         <button id="debugLoadBtn" title="Load Debug Report" style="background:transparent;border:none;color:#9fb2c8;cursor:pointer;font-size:14px;padding:2px 6px">📁</button>
-        <!-- Voice controls moved into the Voice Debug panel -->
-        <button id="tracesToggle" class="badge" title="Toggle traces">Traces</button>
         <span id="connbar" class="badge">Connecting…</span>
         <span id="runsbar" class="badge dim">Active: 0/3</span>
       </div>
@@ -196,8 +193,11 @@
   <section id="voiceDebug" class="voice-debug">
     <div class="vd-head">
       <strong style="font-size:12px">Realtime Voice Debug</strong>
+      <span id="vdModel" class="vd-badge" style="margin-left:8px">Model: —</span>
       <span id="vdStatus" class="vd-badge warn">Idle</span>
       <div class="spacer"></div>
+      <button id="vdTraces" class="vd-btn" title="Toggle Traces">Traces</button>
+      <button id="vdToolsBtn" class="vd-btn" title="Tools List">Tools</button>
       <button id="vdVoice" class="vd-btn" title="Start/Stop" style="color:#9fb2c8;font-size:12px">Voice: Off</button>
       <button id="vdMute" class="vd-btn" title="Mute" style="color:#79e08f;font-size:14px">🎤</button>
       <button id="vdStop" class="vd-btn" title="Stop" style="color:#ff7b7b;font-size:14px">■</button>
@@ -376,16 +376,16 @@
 
   <!-- Load modular JavaScript files -->
   <!-- Cache-busted module scripts (immutable caching in NGINX requires version stamps) -->
-  <script type="module" src="/js/live/utils.js?v=20250906-1"></script>
-  <script type="module" src="/js/live/debug.js?v=20250906-1"></script>
-  <script type="module" src="/js/live/voice.js?v=20250906-1"></script>
-  <script type="module" src="/js/live/tools.js?v=20250906-1"></script>
-  <script type="module" src="/js/live/wallets.js?v=20250906-1"></script>
-  <script type="module" src="/js/live/runs.js?v=20250906-1"></script>
-  <script type="module" src="/js/live/market.js?v=20250906-1"></script>
-  <script type="module" src="/js/live/forms.js?v=20250906-1"></script>
-  <script type="module" src="/js/live/panels.js?v=20250906-1"></script>
-  <script type="module" src="/js/live/main.js?v=20250906-1"></script>
+  <script type="module" src="/js/live/utils.js?v=@ASSET@"></script>
+  <script type="module" src="/js/live/debug.js?v=@ASSET@"></script>
+  <script type="module" src="/js/live/voice.js?v=@ASSET@"></script>
+  <script type="module" src="/js/live/tools.js?v=@ASSET@"></script>
+  <script type="module" src="/js/live/wallets.js?v=@ASSET@"></script>
+  <script type="module" src="/js/live/runs.js?v=@ASSET@"></script>
+  <script type="module" src="/js/live/market.js?v=@ASSET@"></script>
+  <script type="module" src="/js/live/forms.js?v=@ASSET@"></script>
+  <script type="module" src="/js/live/panels.js?v=@ASSET@"></script>
+  <script type="module" src="/js/live/main.js?v=@ASSET@"></script>
 
   <script>
     // Optional Supabase bootstrap: fetch config, init client, and hold session

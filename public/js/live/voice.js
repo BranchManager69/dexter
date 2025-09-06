@@ -216,7 +216,9 @@ async function startVoice() {
     
     try { 
       const mb = document.getElementById('modelbar'); 
-      if (mb) mb.textContent = `Model: ${model} • Voice: ${j.voice || 'verse'}`; 
+      if (mb) { mb.textContent = `Model: ${model} • Voice: ${j.voice || 'verse'}`; }
+      const vdm = document.getElementById('vdModel');
+      if (vdm) { vdm.textContent = `Model: ${model} • Voice: ${j.voice || 'verse'}`; }
     } catch {}
 
     // Handle remote audio
@@ -387,11 +389,11 @@ async function setupVoiceSession(dc, sessionInfo, model) {
     
     try {
       const mb = document.getElementById('modelbar');
-      if (mb) {
-        mb.textContent = `Model: ${boot.model} • Voice: ${boot.voice}${boot.version ? ` • Tools v${boot.version}` : ''}`;
-        const updated = (new Date(boot.updated_at || Date.now())).toUTCString();
-        mb.title = `Model: ${boot.model}\nVoice: ${boot.voice}\nTools: v${boot.version || '-'}\nUpdated: ${updated}`;
-      }
+      const vdm = document.getElementById('vdModel');
+      const txt = `Model: ${boot.model} • Voice: ${boot.voice}${boot.version ? ` • Tools v${boot.version}` : ''}`;
+      const updated = (new Date(boot.updated_at || Date.now())).toUTCString();
+      if (mb) { mb.textContent = txt; mb.title = `Model: ${boot.model}\nVoice: ${boot.voice}\nTools: v${boot.version || '-'}\nUpdated: ${updated}`; }
+      if (vdm) { vdm.textContent = txt; vdm.title = `Model: ${boot.model}\nVoice: ${boot.voice}\nTools: v${boot.version || '-'}\nUpdated: ${updated}`; }
       if (window.LiveDebug?.vd) {
         window.LiveDebug.vd.add('info', 'bootstrap', { 
           model: boot.model, 
@@ -453,8 +455,9 @@ async function setupVoiceSession(dc, sessionInfo, model) {
       const mcpNames = new Set();
       for (const t of mcpTools) { const nm = t?.name || t?.tool?.name; if (nm) mcpNames.add(nm); }
 
-      // Whitelist strictly local voice/debug utilities; everything else prefers MCP if present
-      const localOnly = new Set(['get_latest_analysis','voice_health','voice_debug_save','wait_for_report_by_mint','finalize_report','list_managed_wallets','list_aliases','add_wallet_alias','set_default_wallet','list_wallet_token_balances']);
+      // Keep ONLY debug/local utilities as function tools; EVERYTHING ELSE via MCP
+      // This makes Realtime immediately extensible by MCP without manual porting.
+      const localOnly = new Set(['get_latest_analysis','voice_health','voice_debug_save']);
       const functionTools = Array.isArray(boot.tools) ? boot.tools.slice() : [];
       const filteredLocal = functionTools.filter(t => {
         const nm = t?.name || t?.tool?.name; if (!nm) return false;
@@ -711,10 +714,25 @@ function sendTextMessage(text) {
     try { const vdLog = document.getElementById('vdLog'); if (vdLog) vdLog.classList.add('expanded'); } catch {}
     const t = String(text || '').trim();
     if (!t) return;
+
+    // De-dup guard: avoid double-send within a short window for identical text
+    try {
+      const now = Date.now();
+      const lastT = window.LiveVoice?._lastSentTextValue || '';
+      const lastAt = window.LiveVoice?._lastSentTextAt || 0;
+      if (lastT === t && (now - lastAt) < 800) {
+        // Skip duplicate rapid-fire send
+        return;
+      }
+      window.LiveVoice._lastSentTextValue = t;
+      window.LiveVoice._lastSentTextAt = now;
+    } catch {}
     // If not connected yet, start voice then queue
     if (!voice.connected || !voice.dc || voice.dc.readyState !== 'open') {
       window.LiveVoice._queuedText = window.LiveVoice._queuedText || [];
-      window.LiveVoice._queuedText.push(t);
+      // Avoid enqueueing a duplicate identical tail entry
+      const q = window.LiveVoice._queuedText;
+      if (!q.length || q[q.length - 1] !== t) q.push(t);
       // Start voice if not already starting
       if (!voice.connecting && !voice.connected) startVoice();
       return;

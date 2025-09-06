@@ -515,7 +515,7 @@ export function buildResponsesTools({ includeWebSearch, includeCodeInterpreter, 
       },
       strict: true
     },
-    {
+  {
       type: 'function',
       name: 'list_managed_wallets',
       description: 'List all available managed wallets for trading',
@@ -527,9 +527,8 @@ export function buildResponsesTools({ includeWebSearch, includeCodeInterpreter, 
           offset: { type: 'integer', description: 'Offset for pagination', minimum: 0, default: 0 },
           include_admin: { type: 'boolean', description: 'Include admin/superadmin-owned wallets', default: false }
         },
-        // OpenAI Responses strict tools require 'required' to enumerate all properties.
-        // Defaults allow the model to fill these automatically without user-provided args.
-        required: ['search','limit','offset','include_admin'],
+        // Parameters are optional; backend applies sensible defaults when omitted.
+        // Keeping this flexible allows the model to call with {}.
         additionalProperties: false
       },
       strict: true
