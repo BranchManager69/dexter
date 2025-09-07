@@ -234,7 +234,7 @@ export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
         return res.status(403).json({ ok:false, error:'forbidden' });
       }
       const instructions = readRealtimeInstructions();
-      const tools = getRealtimeTools();
+      const tools = []; // MCP-ONLY: do not expose local function tools
       const model = String(process.env.TOKEN_AI_REALTIME_MODEL || 'gpt-realtime');
       const voice = String(process.env.TOKEN_AI_REALTIME_VOICE || 'verse');
       const version = computeBootstrapVersion({ model, voice, instructions, tools });
@@ -261,7 +261,7 @@ export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
   });
 
   app.get('/realtime/tools', (req, res) => {
-    try { return res.json({ ok:true, tools: getRealtimeTools() }); } catch (e) { return res.status(500).json({ ok:false, error: e?.message || 'error' }); }
+    try { return res.json({ ok:true, tools: [] }); } catch (e) { return res.status(500).json({ ok:false, error: e?.message || 'error' }); }
   });
 
   app.get('/realtime/instructions', (req, res) => {
