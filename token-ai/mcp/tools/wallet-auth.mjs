@@ -111,14 +111,6 @@ export function resolveWalletForRequest(extra){
   return { wallet_id: null, source: 'none' };
 }
 
-// Identity helpers for ownership checks
-function headersFromExtra(extra){
-  try { if (extra?.requestInfo?.headers) return extra.requestInfo.headers; } catch {}
-  try { if (extra?.request?.headers) return extra.request.headers; } catch {}
-  try { if (extra?.httpRequest?.headers) return extra.httpRequest.headers; } catch {}
-  return {};
-}
-
 async function getIdentity(extra){
   const headers = headersFromExtra(extra);
   // Prefer Supabase user id from X-User-Token (JWT signed by UI server)

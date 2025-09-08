@@ -101,6 +101,9 @@ export function buildMcpServer(options = {}){
   const _origRegisterTool = server.registerTool.bind(server);
   server.registerTool = (name, meta, handler) => {
     const m = { ...meta };
+    // Coerce null/undefined schemas to z.any() to satisfy SDK expectations
+    try { if (m && (m.inputSchema == null)) m.inputSchema = z.any(); } catch {}
+    try { if (m && (m.outputSchema == null)) m.outputSchema = z.any(); } catch {}
     try {
       if (m && m.inputSchema && typeof m.inputSchema === 'object' && !m.inputSchema._def) {
         try { m.inputSchema = z.object(m.inputSchema); } catch { m.inputSchema = z.any(); }
