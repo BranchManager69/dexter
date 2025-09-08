@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Link MCP Account - Dexter</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      padding: 40px;
+      max-width: 450px;
+      width: 100%;
+    }
+    
+    h1 {
+      color: #333;
+      font-size: 28px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    
+    .subtitle {
+      color: #666;
+      text-align: center;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    
+    .form-group {
+      margin-bottom: 25px;
+    }
+    
+    label {
+      display: block;
+      color: #555;
+      font-weight: 500;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    
+    .code-input {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    
+    .code-input input {
+      width: 45px;
+      height: 55px;
+      text-align: center;
+      font-size: 24px;
+      font-weight: bold;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      text-transform: uppercase;
+      transition: all 0.3s ease;
+    }
+    
+    .code-input input:focus {
+      outline: none;
+      border-color: #667eea;
+      transform: scale(1.05);
+    }
+    
+    .code-input input.filled {
+      background: #f0f4ff;
+      border-color: #667eea;
+    }
+    
+    button {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .message {
+      margin-top: 20px;
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 14px;
+      display: none;
+    }
+    
+    .message.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+      display: block;
+    }
+    
+    .message.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+      display: block;
+    }
+    
+    .message.info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+      display: block;
+    }
+    
+    .status {
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 1px solid #e0e0e0;
+    }
+    
+    .status-title {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 10px;
+    }
+    
+    .linked-account {
+      background: #f8f9fa;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .linked-account .provider {
+      font-weight: 500;
+      color: #333;
+    }
+    
+    .linked-account .date {
+      font-size: 12px;
+      color: #666;
+    }
+    
+    .not-authenticated {
+      text-align: center;
+      color: #666;
+    }
+    
+    .not-authenticated a {
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    
+    .not-authenticated a:hover {
+      text-decoration: underline;
+    }
+    
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+      display: none;
+    }
+    
+    .spinner.active {
+      display: block;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Link MCP Account</h1>
+    <p class="subtitle">Connect your Claude or ChatGPT MCP to your Dexter account</p>
+    
+    <div id="auth-check" style="display: none;">
+      <div class="spinner active"></div>
+      <p style="text-align: center; color: #666; margin-top: 10px;">Checking authentication...</p>
+    </div>
+    
+    <div id="not-authenticated" class="not-authenticated" style="display: none;">
+      <p>Please <a href="/login">log in</a> to link your MCP account.</p>
+    </div>
+    
+    <div id="link-form" style="display: none;">
+      <div class="form-group">
+        <label>Enter your 6-character linking code:</label>
+        <div class="code-input" id="codeInputs">
+          <input type="text" maxlength="1" data-index="0" />
+          <input type="text" maxlength="1" data-index="1" />
+          <input type="text" maxlength="1" data-index="2" />
+          <input type="text" maxlength="1" data-index="3" />
+          <input type="text" maxlength="1" data-index="4" />
+          <input type="text" maxlength="1" data-index="5" />
+        </div>
+      </div>
+      
+      <button id="linkButton" disabled>Link Account</button>
+      
+      <div id="message" class="message"></div>
+      
+      <div class="status" id="status" style="display: none;">
+        <div class="status-title">Linked Accounts:</div>
+        <div id="linkedAccounts"></div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // Import auth module
+    const authScript = document.createElement('script');
+    authScript.src = '/js/auth.js';
+    authScript.onload = initializePage;
+    document.head.appendChild(authScript);
+    
+    async function initializePage() {
+      // Wait for auth to be ready
+      if (typeof window.auth === 'undefined') {
+        setTimeout(initializePage, 100);
+        return;
+      }
+      
+      // Initialize auth
+      await auth.init();
+      
+      // Check if authenticated
+      const session = await auth.getSession();
+      
+      document.getElementById('auth-check').style.display = 'none';
+      
+      if (!session) {
+        document.getElementById('not-authenticated').style.display = 'block';
+        return;
+      }
+      
+      document.getElementById('link-form').style.display = 'block';
+      
+      // Load current link status
+      await loadLinkStatus();
+      
+      // Set up code input handlers
+      setupCodeInputs();
+      
+      // Set up link button
+      document.getElementById('linkButton').addEventListener('click', handleLink);
+    }
+    
+    function setupCodeInputs() {
+      const inputs = document.querySelectorAll('.code-input input');
+      const linkButton = document.getElementById('linkButton');
+      
+      inputs.forEach((input, index) => {
+        // Handle input
+        input.addEventListener('input', (e) => {
+          const value = e.target.value.toUpperCase();
+          
+          // Only allow valid characters
+          if (!/^[A-Z0-9]?$/.test(value)) {
+            e.target.value = '';
+            return;
+          }
+          
+          e.target.value = value;
+          
+          // Mark as filled
+          if (value) {
+            e.target.classList.add('filled');
+          } else {
+            e.target.classList.remove('filled');
+          }
+          
+          // Auto-advance to next input
+          if (value && index < inputs.length - 1) {
+            inputs[index + 1].focus();
+          }
+          
+          // Check if all filled
+          checkCodeComplete();
+        });
+        
+        // Handle backspace
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Backspace' && !e.target.value && index > 0) {
+            inputs[index - 1].focus();
+          }
+        });
+        
+        // Handle paste
+        input.addEventListener('paste', (e) => {
+          e.preventDefault();
+          const pastedData = e.clipboardData.getData('text').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          
+          for (let i = 0; i < Math.min(pastedData.length, inputs.length); i++) {
+            inputs[i].value = pastedData[i];
+            inputs[i].classList.add('filled');
+          }
+          
+          checkCodeComplete();
+        });
+      });
+    }
+    
+    function checkCodeComplete() {
+      const inputs = document.querySelectorAll('.code-input input');
+      const linkButton = document.getElementById('linkButton');
+      
+      const code = Array.from(inputs).map(i => i.value).join('');
+      linkButton.disabled = code.length !== 6;
+    }
+    
+    function getCode() {
+      const inputs = document.querySelectorAll('.code-input input');
+      return Array.from(inputs).map(i => i.value).join('');
+    }
+    
+    async function handleLink() {
+      const linkButton = document.getElementById('linkButton');
+      const messageDiv = document.getElementById('message');
+      
+      linkButton.disabled = true;
+      messageDiv.className = 'message';
+      
+      try {
+        const code = getCode();
+        const token = await auth.getAccessToken();
+        
+        const response = await fetch('/api/link/verify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ code })
+        });
+        
+        const data = await response.json();
+        
+        if (data.ok) {
+          messageDiv.className = 'message success';
+          messageDiv.textContent = `Successfully linked your ${data.provider} account!`;
+          messageDiv.style.display = 'block';
+          
+          // Clear inputs
+          document.querySelectorAll('.code-input input').forEach(input => {
+            input.value = '';
+            input.classList.remove('filled');
+          });
+          
+          // Reload status
+          await loadLinkStatus();
+        } else {
+          messageDiv.className = 'message error';
+          messageDiv.textContent = getErrorMessage(data.error);
+          messageDiv.style.display = 'block';
+        }
+      } catch (error) {
+        messageDiv.className = 'message error';
+        messageDiv.textContent = 'Network error. Please try again.';
+        messageDiv.style.display = 'block';
+      } finally {
+        linkButton.disabled = false;
+        checkCodeComplete();
+      }
+    }
+    
+    async function loadLinkStatus() {
+      try {
+        const token = await auth.getAccessToken();
+        
+        const response = await fetch('/api/link/status', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.ok && data.links && data.links.length > 0) {
+          const statusDiv = document.getElementById('status');
+          const accountsDiv = document.getElementById('linkedAccounts');
+          
+          statusDiv.style.display = 'block';
+          accountsDiv.innerHTML = data.links.map(link => `
+            <div class="linked-account">
+              <span class="provider">${link.provider === 'claude' ? 'Claude' : 'ChatGPT'}</span>
+              <span class="date">Linked ${new Date(link.linked_at).toLocaleDateString()}</span>
+            </div>
+          `).join('');
+        }
+      } catch (error) {
+        console.error('Failed to load link status:', error);
+      }
+    }
+    
+    function getErrorMessage(error) {
+      const messages = {
+        'authentication_required': 'Please log in to link your account.',
+        'invalid_code': 'Invalid code. Please check and try again.',
+        'code_not_found': 'Code not found. Please generate a new one.',
+        'code_expired': 'Code has expired. Please generate a new one.',
+        'code_already_used': 'This code has already been used.',
+        'too_many_attempts': 'Too many failed attempts. Please generate a new code.',
+        'already_linked': 'This MCP account is already linked.',
+        'internal_error': 'Server error. Please try again later.'
+      };
+      
+      return messages[error] || 'An error occurred. Please try again.';
+    }
+    
+    // Show auth check initially
+    document.getElementById('auth-check').style.display = 'block';
+  </script>
+</body>
+</html>

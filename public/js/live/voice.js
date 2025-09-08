@@ -247,9 +247,9 @@ async function startVoice() {
     
     try { 
       const mb = document.getElementById('modelbar'); 
-      if (mb) { mb.textContent = `Model: ${model} • Voice: ${j.voice || 'verse'}`; }
+      if (mb) { mb.textContent = `Model: ${model} • Voice: ${j.voice}`; }
       const vdm = document.getElementById('vdModel');
-      if (vdm) { vdm.textContent = `Model: ${model} • Voice: ${j.voice || 'verse'}`; }
+      if (vdm) { vdm.textContent = `Model: ${model} • Voice: ${j.voice}`; }
     } catch {}
 
     // Handle remote audio
@@ -411,7 +411,7 @@ async function setupVoiceSession(dc, sessionInfo, model) {
       b = await r.json().catch(() => ({}));
       boot.etag = r.headers.get('etag') || (b?.version ? `W/"${b.version}"` : null);
       boot.model = b?.model || model;
-      boot.voice = sessionInfo.voice || 'verse';
+      boot.voice = sessionInfo.voice;
       boot.version = b?.version || null;
       boot.updated_at = b?.updated_at || Date.now();
       boot.instructions = b?.instructions || '';
@@ -421,7 +421,7 @@ async function setupVoiceSession(dc, sessionInfo, model) {
     try {
       const mb = document.getElementById('modelbar');
       const vdm = document.getElementById('vdModel');
-      const txt = `Model: ${boot.model} • Voice: ${boot.voice}${boot.version ? ` • Tools v${boot.version}` : ''}`;
+      const txt = `Model: ${boot.model} • Voice: ${boot.voice || 'NOT SET'}${boot.version ? ` • Tools v${boot.version}` : ''}`;
       const updated = (new Date(boot.updated_at || Date.now())).toUTCString();
       if (mb) { mb.textContent = txt; mb.title = `Model: ${boot.model}\nVoice: ${boot.voice}\nTools: v${boot.version || '-'}\nUpdated: ${updated}`; }
       if (vdm) { vdm.textContent = txt; vdm.title = `Model: ${boot.model}\nVoice: ${boot.voice}\nTools: v${boot.version || '-'}\nUpdated: ${updated}`; }

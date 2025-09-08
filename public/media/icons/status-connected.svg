@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="12" cy="12" r="10" fill="#0f1612" stroke="#2a4a36" stroke-width="1.5"/>
+  
+  <!-- Signal waves -->
+  <g stroke="#10b981" stroke-width="1.5" fill="none" opacity="0.8">
+    <path d="M8 14 a6 6 0 0 1 0 -4">
+      <animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" begin="0s"/>
+    </path>
+    <path d="M5 16 a10 10 0 0 1 0 -8">
+      <animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" begin="0.5s"/>
+    </path>
+    <path d="M16 14 a6 6 0 0 0 0 -4">
+      <animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" begin="0s"/>
+    </path>
+    <path d="M19 16 a10 10 0 0 0 0 -8">
+      <animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" begin="0.5s"/>
+    </path>
+  </g>
+  
+  <!-- Center dot -->
+  <circle cx="12" cy="12" r="3" fill="#10b981" filter="url(#glow)">
+    <animate attributeName="r" values="2.5;3.5;2.5" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+</svg>

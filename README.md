@@ -65,7 +65,7 @@ Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https
   - `npm run start` (defaults to port `3013`)
   - or `npm run start:ui` (defaults to port `3017`; override via `TOKEN_AI_UI_PORT`)
 - Optional: Start MCP HTTP with OAuth (local)
-  - `npm run mcp:http:oauth` (defaults to `3928`; override via `TOKEN_AI_MCP_PORT`)
+  - `npm run mcp:http:oauth` (defaults to `3930`; override via `TOKEN_AI_MCP_PORT`)
 - Open locally
   - UI: `http://127.0.0.1:<port>/agent-live.html`
   - Dashboard: `http://127.0.0.1:<port>/agent-dashboard.html`
@@ -80,7 +80,7 @@ See `AGENTS.md` for contributor guidelines and coding conventions.
   - Alt script default: `3017` (`npm run start:ui` or set `TOKEN_AI_UI_PORT`)
   - Production (systemd): `3017`
 - MCP HTTP port
-  - Local default: `3928` (`npm run mcp:http:oauth`)
+  - Local default: `3930` (`npm run mcp:http:oauth`)
   - Production (systemd): `3930` (proxied at `/mcp`)
 - Browser UI auth
   - Optional Supabase: set `SUPABASE_URL` and `SUPABASE_ANON_KEY` to enable magic‑link login.
@@ -98,8 +98,27 @@ See `AGENTS.md` for contributor guidelines and coding conventions.
   - `systemctl status dexter-ui`
   - `systemctl status dexter-mcp`
 - NGINX
-  - Config: `/etc/nginx/sites-available/dexter.cash` (enabled)
-  - Reload: `sudo nginx -t && sudo systemctl reload nginx`
+ - Config: `/etc/nginx/sites-available/dexter.cash` (enabled)
+ - Reload: `sudo nginx -t && sudo systemctl reload nginx`
+ - Static HTML cache-busting: HTML is auto‑stamped on deploy so JS loads fresh.
+   - The UI service runs a pre‑start stamper that writes `?v=<version>` tokens to public HTML.
+   - A systemd path watcher also stamps when `public/js/` or the HTML files change.
+
+## CLI Shortcuts (npm)
+- Health
+  - `npm run ok` → prints one line: `UI:OK | MCP:OK` (or DOWN)
+- Route smoke tests
+  - `npm run r` → server routes smoke test (JSON)
+  - `npm run rt` → same with 60s timeout
+- MCP tests
+  - `npm run mcp:local` → quick MCP client test at `http://localhost:3930/mcp`
+  - `npm run mcp:prod` → quick MCP client test at `https://dexter.cash/mcp`
+- Services (systemd)
+  - `npm run ui:status` / `npm run mcp:status` → prints `active` if up
+  - `npm run ui:restart` / `npm run mcp:restart` → restarts the service (uses sudo)
+
+Notes
+- `npm run mcp` starts the stdio MCP server (no port) and is not used in production.
 
 ## Database (Prisma → Supabase)
 - We’re migrating to Supabase to simplify onboarding. Until then, Postgres via Prisma backs persistence/trading features.

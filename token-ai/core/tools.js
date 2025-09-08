@@ -515,7 +515,7 @@ export function buildResponsesTools({ includeWebSearch, includeCodeInterpreter, 
       },
       strict: true
     },
-  {
+    {
       type: 'function',
       name: 'list_managed_wallets',
       description: 'List all available managed wallets for trading',
@@ -527,8 +527,9 @@ export function buildResponsesTools({ includeWebSearch, includeCodeInterpreter, 
           offset: { type: 'integer', description: 'Offset for pagination', minimum: 0, default: 0 },
           include_admin: { type: 'boolean', description: 'Include admin/superadmin-owned wallets', default: false }
         },
-        // Parameters are optional; backend applies sensible defaults when omitted.
-        // Keeping this flexible allows the model to call with {}.
+        // Strict schema requires listing every key in properties
+        // even if the backend treats them as optional with defaults.
+        required: ['search','limit','offset','include_admin'],
         additionalProperties: false
       },
       strict: true

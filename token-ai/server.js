@@ -15,6 +15,8 @@ import { registerRealtimeRoutes } from './server/routes/realtime.js';
 import { registerMcpProxyRoutes } from './server/routes/mcpProxy.js';
 import { registerIdentityMiddleware, registerAuthRoutes } from './server/routes/auth.js';
 import { registerWalletRoutes } from './server/routes/wallets.js';
+import { registerLinkingRoutes } from './server/routes/linking.js';
+import { registerIdentityRoutes } from './server/routes/identity.js';
 import { RUN_LIMIT, LOGS_PER_RUN_LIMIT, CHILD_MAX_MB, activeRuns, childProcs, spawnAnalyzer, setRunLogListener, setRunExitListener, getRunLogs, killRun } from './core/run-manager.js';
 
 // In-memory cache for lightweight endpoints
@@ -56,36 +58,19 @@ const VOICE_DIR = path.join(TOKEN_AI_DIR, 'reports', 'voice-debug');
 let RUNTIME_DEFAULT_WALLET_ID = process.env.TOKEN_AI_DEFAULT_WALLET_ID || '';
 let DEV_X_USER_TOKEN = '';
 
-// Compute an asset version for cache-busting (git short SHA or timestamp)
-function computeAssetVersion() {
-  try {
-    if (process.env.TOKEN_AI_ASSET_VERSION) return String(process.env.TOKEN_AI_ASSET_VERSION);
-    const gitDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', '.git');
-    const headPath = path.join(gitDir, 'HEAD');
-    const head = fs.readFileSync(headPath, 'utf8').trim();
-    let ref = null;
-    const m = head.match(/^ref:\s*(.*)$/);
-    if (m) {
-      ref = path.join(gitDir, m[1]);
-    }
-    const sha = (ref && fs.existsSync(ref)) ? fs.readFileSync(ref, 'utf8').trim() : head;
-    if (sha && sha.length >= 7) return sha.slice(0, 12);
-  } catch {}
-  return 'r' + Math.floor(Date.now() / 1000);
-}
-const ASSET_VER = computeAssetVersion();
+// Asset version stamping disabled. Serve raw file paths without version tokens.
+const ASSET_VER = 'no-cache';
 
 // Serve static live pages from the repo's root public directory
 const PUB_DIR = path.resolve(TOKEN_AI_DIR, '..', 'public');
 
-// Dynamic HTML route with cache-busted asset placeholders for ALL public .html pages
+// Dynamic HTML route for ALL public .html pages (no asset stamping)
 app.get(/\/(.*\.html)$/i, (req, res, next) => {
   try {
     const rel = req.params[0];
     const file = path.join(PUB_DIR, rel);
     if (!fs.existsSync(file)) return next();
     let html = fs.readFileSync(file, 'utf8');
-    html = html.replace(/@ASSET@/g, ASSET_VER);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     // Prevent stale HTML so new ASSET_VER propagates promptly
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -198,6 +183,8 @@ registerAuthRoutes(app);
 registerRealtimeRoutes(app, { port: PORT, tokenAiDir: TOKEN_AI_DIR });
 registerMcpProxyRoutes(app);
 registerWalletRoutes(app);
+registerLinkingRoutes(app);
+registerIdentityRoutes(app);
 app.post('/events', (req,res) => {
   try {
     // Allow only local agent by default
@@ -222,179 +209,7 @@ app.post('/events', (req,res) => {
   }
 });
 
-// In-memory Realtime Voice Debug log (ring buffer)
-const VOICE_LOG_LIMIT = Number(process.env.TOKEN_AI_VOICE_LOG_LIMIT || 1000);
-const voiceLog = { seq: 0, lines: [] }; // { id, at, ip, ua, session, level, msg, extra }
-function pushVoiceLines(ip, ua, session, items){
-  const added = [];
-  for (const it of items) {
-    const rec = {
-      id: ++voiceLog.seq,
-      at: Date.now(),
-      ip,
-      ua,
-      session: String(session||'') || null,
-      level: String(it?.level||'info'),
-      msg: String(it?.msg||''),
-      extra: (it?.extra!=null ? it.extra : null),
-      t: String(it?.t||'')
-    };
-    voiceLog.lines.push(rec);
-    added.push(rec);
-  }
-  if (voiceLog.lines.length > VOICE_LOG_LIMIT) {
-    voiceLog.lines.splice(0, voiceLog.lines.length - VOICE_LOG_LIMIT);
-  }
-  return added.length;
-}
-
-// Ingest voice debug lines from browser
-if (false) app.post('/realtime/debug-log', (req, res) => {
-  try {
-    const ip = req.ip || req.connection?.remoteAddress || '';
-    const ua = req.headers['user-agent'] || '';
-    const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
-    const required = process.env.TOKEN_AI_EVENTS_TOKEN || '';
-    const provided = req.headers['x-agent-token'] || '';
-    if (!allowLocal && required && provided !== required) {
-      return res.status(403).json({ ok:false, error: 'forbidden' });
-    }
-    const body = req.body || {};
-    const session = String(body.session||'');
-    let lines = [];
-    if (Array.isArray(body.lines)) lines = body.lines;
-    else if (body.line) lines = [body.line];
-    else if (body.msg) lines = [{ level: body.level||'info', msg: body.msg, extra: body.extra }];
-    if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ ok:false, error:'no_lines' });
-    const n = pushVoiceLines(ip, ua, session, lines);
-    return res.json({ ok:true, added:n, size: voiceLog.lines.length, seq: voiceLog.seq });
-  } catch (e) {
-    return res.status(500).json({ ok:false, error: e?.message || 'error' });
-  }
-});
-
-// Retrieve recent voice debug lines
-if (false) app.get('/realtime/debug-log', (req, res) => {
-  try {
-    const ip = req.ip || req.connection?.remoteAddress || '';
-    const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
-    const required = process.env.TOKEN_AI_EVENTS_TOKEN || '';
-    const provided = req.headers['x-agent-token'] || '';
-    if (!allowLocal && required && provided !== required) {
-      return res.status(403).json({ ok:false, error: 'forbidden' });
-    }
-    const lim = Math.max(1, Math.min(1000, parseInt(String(req.query.limit||'100'),10)||100));
-    const qSession = String(req.query.session||'');
-    let items = voiceLog.lines;
-    if (qSession) items = items.filter(x => String(x.session||'') === qSession);
-    items = items.slice(-lim);
-    return res.json({ ok:true, limit: lim, size: voiceLog.lines.length, items });
-  } catch (e) {
-    return res.status(500).json({ ok:false, error: e?.message || 'error' });
-  }
-});
-
-// Clear voice debug buffer (optionally only a session)
-if (false) app.delete('/realtime/debug-log', (req, res) => {
-  try {
-    const ip = req.ip || req.connection?.remoteAddress || '';
-    const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
-    const required = process.env.TOKEN_AI_EVENTS_TOKEN || '';
-    const provided = req.headers['x-agent-token'] || '';
-    if (!allowLocal && required && provided !== required) {
-      return res.status(403).json({ ok:false, error: 'forbidden' });
-    }
-    const qSession = String(req.query.session||'');
-    if (qSession) {
-      const before = voiceLog.lines.length;
-      voiceLog.lines = voiceLog.lines.filter(x => String(x.session||'') !== qSession);
-      return res.json({ ok:true, size: voiceLog.lines.length, removed: before - voiceLog.lines.length });
-    }
-    voiceLog.lines = [];
-    return res.json({ ok:true, size: 0 });
-  } catch (e) {
-    return res.status(500).json({ ok:false, error: e?.message || 'error' });
-  }
-});
-
-// Persist voice debug logs to disk (optionally for a single session)
-if (false) app.post('/realtime/debug-save', (req, res) => {
-  try {
-    const ip = req.ip || req.connection?.remoteAddress || '';
-    const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
-    const required = process.env.TOKEN_AI_EVENTS_TOKEN || '';
-    const provided = req.headers['x-agent-token'] || '';
-    if (!allowLocal && required && provided !== required) {
-      return res.status(403).json({ ok:false, error: 'forbidden' });
-    }
-    const session = String(req.body?.session || '').trim();
-    const note = String(req.body?.note || '').trim();
-    // Filter
-    const items = voiceLog.lines.filter(x => !session || String(x.session||'') === session);
-    if (!items.length) return res.status(404).json({ ok:false, error:'no_logs' });
-    // Ensure dir exists
-    try { fs.mkdirSync(VOICE_DIR, { recursive: true }); } catch {}
-    const ts = new Date().toISOString().replace(/[:.]/g,'-');
-    const sessShort = session ? String(session).slice(0,8) : 'all';
-    const file = `voice-debug-${ts}-${sessShort}.json`;
-    const abs = path.join(VOICE_DIR, file);
-    const payload = { saved_at: new Date().toISOString(), session: session || null, note: note || null, count: items.length, items };
-    fs.writeFileSync(abs, JSON.stringify(payload, null, 2), 'utf8');
-    return res.json({ ok:true, file, path: abs, saved: items.length });
-  } catch (e) {
-    return res.status(500).json({ ok:false, error: e?.message || 'error' });
-  }
-});
-
-// Health summary: aggregate recent debug signals
-if (false) app.get('/realtime/health', (req, res) => {
-  try {
-    const ip = req.ip || req.connection?.remoteAddress || '';
-    const allowLocal = (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:127.0.0.1'));
-    const required = process.env.TOKEN_AI_EVENTS_TOKEN || '';
-    const provided = req.headers['x-agent-token'] || '';
-    if (!allowLocal && required && provided !== required) {
-      return res.status(403).json({ ok:false, error: 'forbidden' });
-    }
-    const qSession = String(req.query.session||'');
-    const lines = voiceLog.lines.filter(x => !qSession || String(x.session||'') === qSession);
-    const sessions = new Map();
-    const getS = (sid)=>{ const s=sessions.get(sid)||{ session:sid||null, count:0, errors:0, lastAt:0, lastMsg:null, dcOpenAt:null, dcCloseAt:null, lastIce:null, lastConnState:null, sdpStatus:null, mintedAt:null, on:false }; sessions.set(sid,s); return s; };
-    for (const l of lines) {
-      const sid = String(l.session||'');
-      const s = getS(sid);
-      s.count++; s.lastAt = Math.max(s.lastAt, l.at||0); s.lastMsg = l.msg || s.lastMsg; if (String(l.level||'')==='error') s.errors++;
-      try {
-        if (l.msg === 'dc open') s.dcOpenAt = l.at;
-        if (l.msg === 'dc close') s.dcCloseAt = l.at;
-        if (l.msg === 'iceConnectionState') s.lastIce = l.extra?.state || l.extra || null;
-        if (l.msg === 'connectionState') s.lastConnState = l.extra?.state || l.extra || null;
-        if (l.msg === 'SDP POST response') s.sdpStatus = l.extra?.status || l.extra || null;
-        if (l.msg === 'session minted') s.mintedAt = l.at;
-        if (l.msg === 'startVoice()') s.on = true;
-        if (l.msg === 'stopVoice()') s.on = false;
-      } catch {}
-    }
-    // Heuristic status per session
-    const out = Array.from(sessions.values()).map(s => {
-      let status = 'ok';
-      let reason = '';
-      if (s.errors > 0) { status = 'error'; reason = 'errors>0'; }
-      if ((s.sdpStatus && Number(s.sdpStatus) >= 400) || s.lastIce === 'failed' || s.lastConnState === 'failed') { status = 'error'; reason = reason || 'sdp/conn failed'; }
-      if (status !== 'error') {
-        if (s.mintedAt && !['connected'].includes(String(s.lastIce||s.lastConnState||''))) { status = 'warn'; reason = 'not connected'; }
-      }
-      return { ...s, status, reason };
-    }).sort((a,b)=> (b.lastAt||0)-(a.lastAt||0));
-    const now = Date.now();
-    const total = lines.length;
-    const active = out.filter(s=> s.on || s.lastIce==='connected' || s.lastConnState==='connected').length;
-    const globalStatus = out.some(s=> s.status==='error') ? 'error' : (out.some(s=> s.status==='warn') ? 'warn' : 'ok');
-    return res.json({ ok:true, total, active, status: globalStatus, sessions: out, generated_at: now });
-  } catch (e) {
-    return res.status(500).json({ ok:false, error: e?.message || 'error' });
-  }
-});
+// Realtime voice debug endpoints are implemented in server/routes/realtime.js
 
 // Mint ephemeral OpenAI Realtime session tokens for browser WebRTC
 // Security: local callers always allowed. If TOKEN_AI_EVENTS_TOKEN is set,
@@ -1174,7 +989,7 @@ app.get('/agent-env.js', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    res.end(`(function(){ try { ${token ? `window.AGENT_TOKEN=${JSON.stringify(token)};` : ''} ${base ? `window.AGENT_BASE=${JSON.stringify(base)};` : ''} ${defaultWallet ? `window.DEFAULT_WALLET_ID=${JSON.stringify(defaultWallet)};` : ''} ${userToken ? `window.X_USER_TOKEN=${JSON.stringify(userToken)};` : ''} ${mcpUrl ? `window.MCP_URL=${JSON.stringify(mcpUrl)};` : ''} window.OPENAI_KEY_PRESENT=${openaiPresent ? 'true':'false'}; window.ASSET_VER=${JSON.stringify(ASSET_VER)}; } catch(e){} })();`);
+    res.end(`(function(){ try { ${token ? `window.AGENT_TOKEN=${JSON.stringify(token)};` : ''} ${base ? `window.AGENT_BASE=${JSON.stringify(base)};` : ''} ${defaultWallet ? `window.DEFAULT_WALLET_ID=${JSON.stringify(defaultWallet)};` : ''} ${userToken ? `window.X_USER_TOKEN=${JSON.stringify(userToken)};` : ''} ${mcpUrl ? `window.MCP_URL=${JSON.stringify(mcpUrl)};` : ''} window.OPENAI_KEY_PRESENT=${openaiPresent ? 'true':'false'}; } catch(e){} })();`);
   } catch (e) {
     try { res.status(500).end('// agent-env error'); } catch {}
   }

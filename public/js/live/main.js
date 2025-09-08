@@ -110,13 +110,15 @@ function setupGlobalEventHandlers() {
           if (window.AGENT_TOKEN) hdr['x-agent-token'] = String(window.AGENT_TOKEN);
           if (window.X_USER_TOKEN) hdr['x-user-token'] = String(window.X_USER_TOKEN);
           
-          const r = await fetch(window.LiveUtils.api('/realtime/debug-get'), { headers: hdr });
+          const r = await fetch(window.LiveUtils.api('/realtime/debug-log'), { headers: hdr });
           const j = await r.json().catch(() => ({ ok: false }));
           
-          if (j.ok && Array.isArray(j.lines)) {
+          // Accept either {lines:[]} or {items:[]} shapes
+          const arr = Array.isArray(j?.lines) ? j.lines : (Array.isArray(j?.items) ? j.items : []);
+          if (j.ok && Array.isArray(arr)) {
             // Display debug logs
-            const lines = j.lines.slice(-50); // Show last 50 lines
-            const text = lines.map(l => `[${l.t}] ${l.level.toUpperCase()} ${l.msg}`).join('\n');
+            const lines = arr.slice(-50); // Show last 50
+            const text = lines.map(l => `[${l.t||''}] ${(l.level||'').toUpperCase()} ${l.msg||''}`).join('\n');
             
             // Create or update debug display
             let debugDisplay = document.getElementById('debugDisplay');

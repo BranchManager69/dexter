@@ -2,7 +2,6 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import OpenAI from 'openai';
-import { getRealtimeTools } from '../../core/realtime-tools.js';
 
 export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
   // Directories
@@ -523,12 +522,10 @@ export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
         return res.json(out);
       }
       if (name === 'set_default_wallet') {
-        // Pass through whatever selector the model provides
-        const payload = {};
-        for (const k of ['wallet_id','alias','wallet_alias','wallet_hint','wallet']) {
-          if (args?.[k] != null) payload[k] = args[k];
-        }
-        const out = await mcpCall('set_default_wallet', payload);
+        // MCP-first: call set_my_default_wallet (requires wallet_id)
+        const wallet_id = String(args?.wallet_id || '');
+        if (!wallet_id) return res.status(400).json({ ok:false, error:'missing_wallet_id' });
+        const out = await mcpCall('set_my_default_wallet', { wallet_id });
         return res.json(out);
       }
       if (name === 'list_wallet_token_balances') {
@@ -546,6 +543,28 @@ export function registerRealtimeRoutes(app, { port, tokenAiDir }) {
         const wallet_address = String(args?.wallet_address || '');
         if (!wallet_address) return res.status(400).json({ ok:false, error:'missing_wallet_address' });
         const out = await mcpCall('get_wallet_holdings', { wallet_address });
+        return res.json(out);
+      }
+      // Lightweight bridges for common research tools → MCP
+      if (name === 'dexscreener_search') {
+        const query = String(args?.query || '');
+        if (!query) return res.status(400).json({ ok:false, error:'missing_query' });
+        const chain_id = String(args?.chain_id || '');
+        const limit = Number.isFinite(Number(args?.limit)) ? Number(args.limit) : 10;
+        const out = await mcpCall('dexscreener_search', { query, chain_id, limit });
+        return res.json(out);
+      }
+      if (name === 'get_token_links_from_db') {
+        const mint = String(args?.mint || args?.mint_address || '');
+        if (!mint) return res.status(400).json({ ok:false, error:'missing_mint' });
+        const out = await mcpCall('get_token_links_from_db', { mint_address: mint });
+        return res.json(out);
+      }
+      if (name === 'discover_official_links') {
+        const mint = String(args?.mint || args?.mint_address || '');
+        if (!mint) return res.status(400).json({ ok:false, error:'missing_mint' });
+        const urls = Array.isArray(args?.urls) ? args.urls : undefined;
+        const out = await mcpCall('discover_official_links', { mint_address: mint, ...(urls ? { urls } : {}) });
         return res.json(out);
       }
       if (name === 'get_token_ohlcv') {

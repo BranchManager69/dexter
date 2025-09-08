@@ -415,7 +415,8 @@ TOKEN_AI_DOMAIN=insider-patterns npm run socials:agent -- <MINT_ADDRESS>
 
 ### Realtime Voice (Optional)
 - Set `OPENAI_API_KEY` in `.env`.
-- Start the UI: `node server.js --port 3013` and open `/agent-live.html`.
+- **PRODUCTION**: Use `sudo systemctl restart dexter-ui.service` (see [SYSTEM_SERVICES.md](../SYSTEM_SERVICES.md))
+- **DEVELOPMENT ONLY**: Start the UI: `node server.js --port 3013` and open `/agent-live.html`.
 - Click the “Voice: Off” button to start a WebRTC session. The server mints a short‑lived token at `POST /realtime/sessions` and connects to OpenAI Realtime.
 - For production, set `TOKEN_AI_EVENTS_TOKEN` and ensure your page includes `window.AGENT_TOKEN = '<same-token>'` (or a proxy injects header `x-agent-token`).
 

@@ -171,7 +171,16 @@ export function registerWalletAuthTools(server) {
       }
       const { PrismaClient } = await import('@prisma/client');
       const prisma = new PrismaClient();
-      const links = await prisma.oauth_user_wallets.findMany({ where: { provider: issuer, subject }, include: { wallet: true }, orderBy: { created_at: 'asc' } });
+      // Attempt to resolve canonical Supabase user id for broader match during migration
+      let supabaseUserId = null;
+      try {
+        const link = await prisma.account_links.findUnique({ where: { oauth_provider_oauth_subject: { oauth_provider: issuer, oauth_subject: subject } } });
+        supabaseUserId = link?.supabase_user_id || null;
+      } catch {}
+      const where = supabaseUserId
+        ? { OR: [{ provider: issuer, subject }, { supabase_user_id: supabaseUserId }] }
+        : { provider: issuer, subject };
+      const links = await prisma.oauth_user_wallets.findMany({ where, include: { wallet: true }, orderBy: { created_at: 'asc' } });
       const wallets = links.map(l => ({ id: l.wallet_id, public_key: l.wallet?.public_key || '', wallet_name: l.wallet?.label || null, is_default: !!l.default_wallet }));
       return { structuredContent: { wallets }, content:[{ type:'text', text: JSON.stringify(wallets) }] };
     } catch (e) { return { content:[{ type:'text', text: e?.message||'list_failed' }], isError:true }; }
@@ -200,8 +209,18 @@ export function registerWalletAuthTools(server) {
       // Ensure wallet exists
       const w = await prisma.managed_wallets.findUnique({ where: { id: String(wallet_id) } });
       if (!w) return { content:[{ type:'text', text:'wallet_not_found' }], isError:true };
-      // Upsert link
-      await prisma.oauth_user_wallets.upsert({ where: { provider_subject_wallet_id: { provider: issuer, subject, wallet_id: String(wallet_id) } }, update: {}, create: { provider: issuer, subject, wallet_id: String(wallet_id), default_wallet: false } });
+      // Resolve canonical Supabase user id for this OAuth identity (if linked)
+      let supabaseUserId = null;
+      try {
+        const link = await prisma.account_links.findUnique({ where: { oauth_provider_oauth_subject: { oauth_provider: issuer, oauth_subject: subject } } });
+        supabaseUserId = link?.supabase_user_id || null;
+      } catch {}
+      // Upsert link and anchor supabase_user_id when available
+      await prisma.oauth_user_wallets.upsert({
+        where: { provider_subject_wallet_id: { provider: issuer, subject, wallet_id: String(wallet_id) } },
+        update: { ...(supabaseUserId ? { supabase_user_id: supabaseUserId } : {}) },
+        create: { provider: issuer, subject, wallet_id: String(wallet_id), default_wallet: false, ...(supabaseUserId ? { supabase_user_id: supabaseUserId } : {}) }
+      });
       if (make_default) {
         await prisma.oauth_user_wallets.updateMany({ where: { provider: issuer, subject }, data: { default_wallet: false } });
         await prisma.oauth_user_wallets.update({ where: { provider_subject_wallet_id: { provider: issuer, subject, wallet_id: String(wallet_id) } }, data: { default_wallet: true } });
@@ -358,8 +377,14 @@ export function registerWalletAuthTools(server) {
       const pub = kp.publicKey.toBase58();
       const name = label || `Wallet ${pub.slice(0,4)}…${pub.slice(-4)}`;
       await prisma.managed_wallets.create({ data: { id: wid, public_key: pub, encrypted_private_key: JSON.stringify(payload), label: name, status: 'active' } });
+      // Resolve Supabase user id if linked and include it in mapping
+      let supabaseUserId = null;
+      try {
+        const link = await prisma.account_links.findUnique({ where: { oauth_provider_oauth_subject: { oauth_provider: issuer, oauth_subject: subject } } });
+        supabaseUserId = link?.supabase_user_id || null;
+      } catch {}
       // Link and set default
-      await prisma.oauth_user_wallets.create({ data: { provider: issuer, subject, wallet_id: wid, default_wallet: false } });
+      await prisma.oauth_user_wallets.create({ data: { provider: issuer, subject, wallet_id: wid, default_wallet: false, ...(supabaseUserId ? { supabase_user_id: supabaseUserId } : {}) } });
       await prisma.oauth_user_wallets.updateMany({ where: { provider: issuer, subject }, data: { default_wallet: false } });
       await prisma.oauth_user_wallets.update({ where: { provider_subject_wallet_id: { provider: issuer, subject, wallet_id: wid } }, data: { default_wallet: true } });
       return { structuredContent: { wallet_id: wid, public_key: pub, is_default: true }, content:[{ type:'text', text: `wallet_id=${wid} ${pub}` }] };

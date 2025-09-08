@@ -5,6 +5,37 @@ export function registerIdentityMiddleware(app) {
   // Lightweight identity mapping: X-User-Token -> ai_app_users via ai_user_tokens
   app.use(async (req, res, next) => {
     try {
+      // Prefer Supabase auth when available: ensure 1:1 ai_app_users mapping by supabase_user_id
+      async function getSupabaseUserIdFromRequest() {
+        try {
+          const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+          const anonKey = process.env.SUPABASE_ANON_KEY || '';
+          const auth = String(req.headers['authorization'] || '');
+          if (!supabaseUrl || !anonKey || !auth.startsWith('Bearer ')) return null;
+          const token = auth.slice(7).trim();
+          const resp = await fetch(`${supabaseUrl}/auth/v1/user`, { headers: { 'authorization': `Bearer ${token}`, 'apikey': anonKey } });
+          if (!resp.ok) return null;
+          const data = await resp.json().catch(()=>null);
+          const id = data?.id || data?.user?.id; return id ? String(id) : null;
+        } catch { return null; }
+      }
+
+      const supaId = await getSupabaseUserIdFromRequest();
+      if (supaId) {
+        // Find or create ai_app_users row keyed by supabase_user_id
+        let user = await prisma.ai_app_users.findFirst({ where: { supabase_user_id: supaId } }).catch(()=>null);
+        if (!user) {
+          try {
+            user = await prisma.ai_app_users.create({ data: { name: 'Web User', role: 'user', supabase_user_id: supaId } });
+          } catch {
+            // If race condition on unique constraint, re-read
+            user = await prisma.ai_app_users.findFirst({ where: { supabase_user_id: supaId } }).catch(()=>null);
+          }
+        }
+        if (user) req.aiUser = { id: user.id, role: user.role, supabaseUserId: supaId };
+        return next();
+      }
+
       const token = String(req.headers['x-user-token'] || '').trim();
       if (!token) return next();
       // find or create mapping
@@ -63,4 +94,3 @@ export function registerAuthRoutes(app) {
 }
 
 export default { registerIdentityMiddleware, registerAuthRoutes };
-

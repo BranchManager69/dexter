@@ -13,6 +13,13 @@
 - Live UI: `node server.js --port 3013` → visit `/agent-live.html` or `/agent-dashboard.html`
 - Prompt debug: `node scripts/check-prompts.js --domain=knowledge-base --voice=trencher`
 
+### Shortcuts (npm)
+- Health: `npm run ok` → `UI:OK | MCP:OK`
+- Routes: `npm run r` (or `npm run routes`) → route smoke test JSON; `npm run rt` adds a 60s timeout
+- MCP tests: `npm run mcp:local` (localhost:3930), `npm run mcp:prod` (dexter.cash)
+- Services: `npm run ui:status` / `npm run mcp:status`, `npm run ui:restart` / `npm run mcp:restart`
+  - Note: restart commands use sudo under the hood
+
 ## Coding Style & Naming Conventions
 - Language: Node.js 18+, ESM-first (`import`/`export`). Mixed `.js` and `.mjs` where appropriate.
 - Indentation: 2 spaces; include semicolons; prefer small, pure functions.
@@ -49,6 +56,10 @@ Important
 - Use systemd only in prod. Do not use pm2 for `dexter-ui` or `dexter-mcp`.
 - Default ports: UI `3017`, MCP `3930`.
 - After client‑side Realtime code changes, restart both services and hard‑refresh the browser to load updated assets.
+
+MCP‑Only Tools
+- The server no longer exposes local function tools under `/realtime/*`; all tool calls run via MCP.
+- If MCP is down, tool calls fail (by design) — there is no local fallback.
 
 ## Realtime Voice Agent
 - Response gating: the client queues `response.create` to prevent `conversation_already_has_active_response`. One response at a time; queued items flush on `response.done`/`response.completed`.

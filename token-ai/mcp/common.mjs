@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 // Import modular tools
 import { registerWalletAuthTools, sessionWalletOverrides } from './tools/wallet-auth.mjs';
+import { registerAccountLinkingTools } from './tools/account-linking.mjs';
 import { registerProgramAccountsTools } from './tools/program-accounts.mjs';
 import { registerAgentRunTools } from './tools/agent-run.mjs';
 import { registerReportAnalysisTools } from './tools/report-analysis.mjs';
@@ -21,6 +22,7 @@ import { registerTradingTools } from './tools/trading.mjs';
 import { registerPredictionTools } from './tools/predictions.mjs';
 import { registerFoundationTools } from './tools/foundation.mjs';
 import { registerWalletExtraTools } from './tools/wallet-extra.mjs';
+import { registerWalletAliasTools } from './tools/wallet-aliases.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TOKEN_AI_DIR = path.resolve(HERE, '..');
@@ -93,11 +95,37 @@ export function buildMcpServer(options = {}){
     instructions: instructionsLines.join('\n')
   });
 
+  // Band-aid eliminator: normalize schemas so tools/list never crashes.
+  // Some legacy tools passed plain shape objects instead of Zod schemas.
+  // Wrap any plain object shapes into z.object(...) at registration time.
+  const _origRegisterTool = server.registerTool.bind(server);
+  server.registerTool = (name, meta, handler) => {
+    const m = { ...meta };
+    try {
+      if (m && m.inputSchema && typeof m.inputSchema === 'object' && !m.inputSchema._def) {
+        try { m.inputSchema = z.object(m.inputSchema); } catch { m.inputSchema = z.any(); }
+      }
+    } catch {}
+    try {
+      if (m && m.outputSchema && typeof m.outputSchema === 'object' && !m.outputSchema._def) {
+        try { m.outputSchema = z.object(m.outputSchema); } catch { m.outputSchema = z.any(); }
+      }
+    } catch {}
+    // If schemas are present but not Zod types, coerce to z.any()
+    try { if (m.inputSchema && !m.inputSchema._def) m.inputSchema = z.any(); } catch {}
+    try { if (m.outputSchema && !m.outputSchema._def) m.outputSchema = z.any(); } catch {}
+    return _origRegisterTool(name, m, handler);
+  };
+
   const wantAll = includeToolsets.has('all');
   const want = (name) => wantAll || includeToolsets.has(name);
 
   // Register modular toolsets according to selection
-  if (want('wallet')) registerWalletAuthTools(server);
+  if (want('wallet')) {
+    registerWalletAuthTools(server);
+    registerAccountLinkingTools(server);
+    registerWalletAliasTools(server);
+  }
   if (want('program')) registerProgramAccountsTools(server);
   if (want('runs') && ENABLE_RUN_TOOLS) registerAgentRunTools(server);
   if (want('reports')) registerReportAnalysisTools(server);
