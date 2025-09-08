@@ -241,23 +241,29 @@ export function registerMcpProxyRoutes(app) {
                 extUserId = hTok;
               }
             } catch {}
-            const { listManagedWallets } = await import('../../trade-manager/wallet-utils.js');
-            const includeAdmin = String(process.env.TOKEN_AI_EXPOSE_ADMIN_WALLETS || '0') === '1';
-            let wallets = await listManagedWallets({ externalUserId: extUserId || null, includeAdmin });
+            // Enforce wallet scoping: return only wallets linked to this Supabase user via oauth_user_wallets
+            const { PrismaClient } = await import('@prisma/client');
+            const prisma = new PrismaClient();
             const args = (b.params && b.params.arguments) || {};
-            try {
-              const s = String((args.search ?? '')).trim().toLowerCase();
-              if (s) {
-                wallets = wallets.filter(w => {
-                  const name = String(w.wallet_name || '').toLowerCase();
-                  const pk = String(w.public_key || '').toLowerCase();
-                  return name.includes(s) || pk.startsWith(s) || pk.endsWith(s);
-                });
+            const take = Math.min(100, Math.max(1, parseInt(String(args.limit ?? '25'), 10) || 25));
+            const skip = Math.max(0, parseInt(String(args.offset ?? '0'), 10) || 0);
+            let wallets = [];
+            if (extUserId) {
+              const links = await prisma.oauth_user_wallets.findMany({ where: { supabase_user_id: String(extUserId) } });
+              const ids = Array.from(new Set(links.map(l => String(l.wallet_id))));
+              if (ids.length) {
+                const whereAnd = [ { id: { in: ids } }, { NOT: { encrypted_private_key: '' } } ];
+                const s = String((args.search ?? args.query ?? args.q ?? '')).trim();
+                if (s) {
+                  whereAnd.push({ OR: [
+                    { label: { contains: s, mode: 'insensitive' } },
+                    { public_key: { contains: s, mode: 'insensitive' } }
+                  ]});
+                }
+                const rows = await prisma.managed_wallets.findMany({ where: { AND: whereAnd }, select: { id: true, public_key: true, label: true }, orderBy: { id: 'asc' }, take, skip });
+                wallets = rows.map(w => ({ id: String(w.id), public_key: w.public_key, wallet_name: w.label, user_id: null }));
               }
-              let limit = Math.min(100, Math.max(1, parseInt(String(args.limit ?? '25'), 10) || 25));
-              let offset = Math.max(0, parseInt(String(args.offset ?? '0'), 10) || 0);
-              wallets = wallets.slice(offset, offset + limit);
-            } catch {}
+            }
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
             return res.end(JSON.stringify({ jsonrpc:'2.0', id: b.id || '2', result: { structuredContent: { wallets }, content: [{ type:'text', text: JSON.stringify(wallets) }] } }));
           }

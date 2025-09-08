@@ -86,6 +86,10 @@ export function registerTradingTools(server, options = {}) {
     }
   }, async ({ wallet_id, min_ui, limit }, extra) => {
     try {
+      if (wallet_id) {
+        const owns = await userOwnsWallet(String(wallet_id), extra);
+        if (!owns) return { content:[{ type:'text', text:'forbidden_wallet' }], isError:true };
+      }
       const conn = await getRpcConnection();
       const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
       const { TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
@@ -692,6 +696,10 @@ export function registerTradingTools(server, options = {}) {
     }
   }, async ({ wallet_id, token_mint, sol_amount, slippage_bps, priority_lamports }, extra) => {
     try {
+      if (wallet_id) {
+        const owns = await userOwnsWallet(String(wallet_id), extra);
+        if (!owns) return { content:[{ type:'text', text:'forbidden_wallet' }], isError:true };
+      }
       const conn = await getRpcConnection();
       const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
       const { SOL_MINT, SOL_DECIMALS, getQuote, getSwapTransaction, deserializeTransaction, formatTokenAmount } = await import('../../trade-manager/jupiter-api.js');
@@ -782,6 +790,10 @@ export function registerTradingTools(server, options = {}) {
     }
   }, async ({ wallet_id, token_mint, token_amount, slippage_bps, priority_lamports, output_mint }, extra) => {
     try {
+      if (wallet_id) {
+        const owns = await userOwnsWallet(String(wallet_id), extra);
+        if (!owns) return { content:[{ type:'text', text:'forbidden_wallet' }], isError:true };
+      }
       const conn = await getRpcConnection();
       const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
       let wid = await resolveWalletIdOrNull(wallet_id, extra); if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true };
@@ -853,6 +865,10 @@ export function registerTradingTools(server, options = {}) {
     }
   }, async ({ wallet_id, token_mint, slippage_bps, priority_lamports }, extra) => {
     try {
+      if (wallet_id) {
+        const owns = await userOwnsWallet(String(wallet_id), extra);
+        if (!owns) return { content:[{ type:'text', text:'forbidden_wallet' }], isError:true };
+      }
       const conn = await getRpcConnection();
       const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
       let wid = await resolveWalletIdOrNull(wallet_id, extra); if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true };
@@ -935,6 +951,10 @@ export function registerTradingTools(server, options = {}) {
     }
   }, async ({ wallet_id, token_mint, slippage_bps }, extra) => {
     try {
+      if (wallet_id) {
+        const owns = await userOwnsWallet(String(wallet_id), extra);
+        if (!owns) return { content:[{ type:'text', text:'forbidden_wallet' }], isError:true };
+      }
       const conn = await getRpcConnection();
       const { loadWallet } = await import('../../trade-manager/wallet-utils.js');
       let wid = await resolveWalletIdOrNull(wallet_id, extra); if (!wid) return { content:[{ type:'text', text:'no_wallet' }], isError:true };
@@ -959,7 +979,7 @@ export function registerTradingTools(server, options = {}) {
     }
   });
 
-  // Wallet listing is useful in both modes
+  // Wallet listing: restricted to the caller's linked wallets only
   server.registerTool('list_managed_wallets', {
     title: 'List Managed Wallets',
     description: 'List managed wallets available for trading (IDs and public keys).',
@@ -976,20 +996,35 @@ export function registerTradingTools(server, options = {}) {
     const searchTerm = search ?? query ?? q;
     const take = Math.max(1, Math.min(500, Number(limit) || 100));
     const skip = Math.max(0, Number(offset) || 0);
-    // First: query via Prisma directly
     try {
       const { PrismaClient } = await import('@prisma/client');
       const prisma = new PrismaClient();
       const headers = headersFromExtra(extra);
+      // Resolve identity: prefer Supabase short-lived token; else OAuth issuer/sub
+      let supabaseUserId = null;
+      try {
+        const tok = String(headers['x-user-token'] || headers['X-User-Token'] || '').trim();
+        const secret = process.env.MCP_USER_JWT_SECRET || process.env.TOKEN_AI_EVENTS_TOKEN || '';
+        if (tok && secret) {
+          const { jwtVerifyHS256 } = await import('../../server/utils/jwt.js');
+          const payload = jwtVerifyHS256(tok, secret);
+          if (payload && (payload.sub || payload.user_id)) supabaseUserId = String(payload.sub || payload.user_id);
+        }
+      } catch {}
       const issuer = String(__issuer || headers['x-user-issuer']||'');
       const subject = String(__sub || headers['x-user-sub']||'');
-      const admin = (String(process.env.TOKEN_AI_EXPOSE_ADMIN_WALLETS||'0')==='1');
-      let allowedIds = null;
-      if (issuer && subject && !admin && !include_admin) {
-        const links = await prisma.oauth_user_wallets.findMany({ where: { provider: issuer, subject } });
-        allowedIds = new Set(links.map(l=> String(l.wallet_id)));
+      let links = [];
+      if (supabaseUserId) {
+        links = await prisma.oauth_user_wallets.findMany({ where: { supabase_user_id: supabaseUserId } });
+      } else if (issuer && subject) {
+        links = await prisma.oauth_user_wallets.findMany({ where: { provider: issuer, subject } });
+      } else {
+        // No identity → do not expose any wallets
+        return { structuredContent: { wallets: [] }, content:[{ type:'text', text:'[]' }] };
       }
-      const whereAnd = [ { NOT: { encrypted_private_key: '' } } ];
+      const ids = Array.from(new Set(links.map(l => String(l.wallet_id))));
+      if (!ids.length) return { structuredContent: { wallets: [] }, content:[{ type:'text', text:'[]' }] };
+      const whereAnd = [ { id: { in: ids } }, { NOT: { encrypted_private_key: '' } } ];
       if (searchTerm && String(searchTerm).trim()) {
         whereAnd.push({ OR: [
           { label: { contains: String(searchTerm), mode: 'insensitive' } },
@@ -998,27 +1033,14 @@ export function registerTradingTools(server, options = {}) {
       }
       const rows = await prisma.managed_wallets.findMany({
         where: { AND: whereAnd },
-        select: { id: true, public_key: true, label: true, ownerId: true, encrypted_private_key: true, owner: { select: { role: true } } },
+        select: { id: true, public_key: true, label: true },
         orderBy: { id: 'asc' },
         take, skip
       });
-      const exposeAdmin = (include_admin != null) ? !!include_admin : (String(process.env.TOKEN_AI_EXPOSE_ADMIN_WALLETS || '0') === '1');
-      const wallets = rows.filter(w => {
-        const isAdmin = !!(w.owner && (w.owner.role === 'admin' || w.owner.role === 'superadmin'));
-        if (isAdmin && !exposeAdmin) return false;
-        if (allowedIds && allowedIds.size>0 && !allowedIds.has(String(w.id))) return false;
-        return true;
-      }).map(w => ({ id: String(w.id), public_key: w.public_key, wallet_name: w.label, user_id: w.ownerId }));
+      const wallets = rows.map(w => ({ id: String(w.id), public_key: w.public_key, wallet_name: w.label, user_id: null }));
       return { structuredContent: { wallets }, content: [{ type:'text', text: JSON.stringify(wallets) }] };
     } catch (e) {
-      // Fallback: best-effort via wallet-utils helper
-      try {
-        const { listManagedWallets } = await import('../../trade-manager/wallet-utils.js');
-        const wallets = await listManagedWallets({ search: searchTerm, limit: take, offset: skip, includeAdmin: include_admin });
-        return { structuredContent: { wallets }, content: [{ type:'text', text: JSON.stringify(wallets) }] };
-      } catch (e2) {
-        return { content: [{ type:'text', text: e2?.message || e?.message || 'list_wallets_failed' }], isError: true };
-      }
+      return { content: [{ type:'text', text: e?.message || 'list_wallets_failed' }], isError: true };
     }
   });
 }

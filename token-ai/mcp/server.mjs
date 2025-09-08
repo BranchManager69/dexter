@@ -16,7 +16,25 @@ try {
   dotenv.config({ path: path.join(TA_ROOT, '.env') });
 } catch {}
 
-const server = buildMcpServer();
+// CLI flags (mirror HTTP `?tools=` semantics)
+const ARGS = process.argv.slice(2);
+function getFlag(name, def){
+  for (let i=0;i<ARGS.length;i++){
+    const a = ARGS[i];
+    if (a === `--${name}`) return ARGS[i+1] || def;
+    if (a.startsWith(`--${name}=`)) return a.split('=')[1] || def;
+  }
+  return def;
+}
+
+// Allow per-process toolset selection: `--tools=wallet,web` (same groups as HTTP)
+// Recognized groups: wallet, program, runs, reports, voice, web, trading, or all
+const includeToolsets = (() => {
+  const t = String(getFlag('tools', '') || '').trim();
+  return t ? t : undefined; // pass through to common.mjs for parsing
+})();
+
+const server = buildMcpServer({ includeToolsets });
 const transport = new StdioServerTransport();
 (async () => {
   try {

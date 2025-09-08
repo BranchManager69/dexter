@@ -111,6 +111,58 @@ export function resolveWalletForRequest(extra){
   return { wallet_id: null, source: 'none' };
 }
 
+// Identity helpers for ownership checks
+function headersFromExtra(extra){
+  try { if (extra?.requestInfo?.headers) return extra.requestInfo.headers; } catch {}
+  try { if (extra?.request?.headers) return extra.request.headers; } catch {}
+  try { if (extra?.httpRequest?.headers) return extra.httpRequest.headers; } catch {}
+  return {};
+}
+
+async function getIdentity(extra){
+  const headers = headersFromExtra(extra);
+  // Prefer Supabase user id from X-User-Token (JWT signed by UI server)
+  let supabaseUserId = null;
+  try {
+    const tok = String(headers['x-user-token'] || headers['X-User-Token'] || '').trim();
+    const secret = process.env.MCP_USER_JWT_SECRET || process.env.TOKEN_AI_EVENTS_TOKEN || '';
+    if (tok && secret) {
+      const { jwtVerifyHS256 } = await import('../../server/utils/jwt.js');
+      const payload = jwtVerifyHS256(tok, secret);
+      if (payload && (payload.sub || payload.user_id)) supabaseUserId = String(payload.sub || payload.user_id);
+    }
+  } catch {}
+  // Also capture OAuth provider identity if present (HTTP OAuth path)
+  let issuer = null, subject = null;
+  try {
+    issuer = String(headers['x-user-issuer'] || headers['X-User-Issuer'] || '').trim() || null;
+    subject = String(headers['x-user-sub'] || headers['X-User-Sub'] || '').trim() || null;
+  } catch {}
+  return { supabaseUserId, issuer, subject };
+}
+
+export async function userOwnsWallet(walletId, extra){
+  try {
+    const wid = String(walletId || '').trim();
+    if (!wid) return false;
+    const ident = await getIdentity(extra);
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+    // Prefer Supabase mapping when available
+    if (ident.supabaseUserId) {
+      const row = await prisma.oauth_user_wallets.findFirst({ where: { wallet_id: wid, supabase_user_id: ident.supabaseUserId } });
+      if (row) return true;
+    }
+    if (ident.issuer && ident.subject) {
+      const row = await prisma.oauth_user_wallets.findFirst({ where: { wallet_id: wid, provider: ident.issuer, subject: ident.subject } });
+      if (row) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 function parseAdmins(){
   const emails = (process.env.ADMIN_EMAILS||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
   const subs = (process.env.ADMIN_OAUTH_SUBS||'').split(',').map(s=>s.trim()).filter(Boolean);
@@ -282,6 +334,9 @@ export function registerWalletAuthTools(server) {
         return { structuredContent: { ok: true, wallet_id: null, cleared: true }, content:[{ type:'text', text:'cleared' }] };
       }
       if (!wallet_id) return { content:[{ type:'text', text:'missing wallet_id' }], isError:true };
+      // Enforce ownership: only allow setting a wallet linked to this user/session
+      const owns = await userOwnsWallet(String(wallet_id), extra);
+      if (!owns) return { content:[{ type:'text', text:'forbidden_wallet' }], isError:true };
       sessionWalletOverrides.set(sid, String(wallet_id));
       return { structuredContent: { ok: true, wallet_id: String(wallet_id) }, content:[{ type:'text', text:String(wallet_id) }] };
     } catch (e) {

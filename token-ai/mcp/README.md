@@ -11,16 +11,20 @@ Legacy note: The old ChatGPT-specific SSE server (`mcp/http-server-chatgpt.mjs`)
 
 ## Toolset Scoping (Reduce Context Size)
 
-By default, the MCP server exposed all tool groups, which can bloat model context. You can now scope tools globally or per session.
+By default, the MCP server exposed all tool groups, which can bloat model context. You can now scope tools globally, per session (HTTP), or per process (stdio).
 
 - Global (env):
   - `TOKEN_AI_MCP_TOOLSETS=all` (default)
   - Or a CSV of groups: `wallet,program,runs,reports,voice,web,trading`
   - Example: `TOKEN_AI_MCP_TOOLSETS=reports,web` for a lightweight research setup
 
-- Per-session (HTTP only):
+- Per-session (HTTP):
   - Initialize with `POST /mcp?tools=trading,wallet,reports`
   - Subsequent requests reuse the same session with that toolset; no need to repeat the param
+
+- Per-process (STDIO):
+  - Start with `node token-ai/mcp/server.mjs --tools=trading,wallet,reports`
+  - Same group names as HTTP; effect lasts for the lifetime of the process
 
 - Trading tools: advanced only. We keep preview/execute/unified tools and remove deprecated helpers over time.
 
