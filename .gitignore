@@ -3,6 +3,24 @@
 .token
 *.pem
 
+# Backups
+_backup/
+
+# Cursor
+.cursor/
+**/.cursor/
+
+# Claude
+.claude/
+**/.claude/
+
+# VSCode
+.vscode/
+**/.vscode/
+
+# Generic
+AGENTS.md
+
 # Node
 node_modules/
 **/node_modules/

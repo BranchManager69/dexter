@@ -101,22 +101,16 @@ export function buildMcpServer(options = {}){
   const _origRegisterTool = server.registerTool.bind(server);
   server.registerTool = (name, meta, handler) => {
     const m = { ...meta };
-    // Coerce null/undefined schemas to z.any() to satisfy SDK expectations
-    try { if (m && (m.inputSchema == null)) m.inputSchema = z.any(); } catch {}
-    try { if (m && (m.outputSchema == null)) m.outputSchema = z.any(); } catch {}
     try {
-      if (m && m.inputSchema && typeof m.inputSchema === 'object' && !m.inputSchema._def) {
-        try { m.inputSchema = z.object(m.inputSchema); } catch { m.inputSchema = z.any(); }
+      // If tool declares no inputs, leave undefined so SDK calls handler without args
+      if (meta.inputSchema == null) {
+        m.inputSchema = undefined;
+      } else {
+        m.inputSchema = z.any();
       }
     } catch {}
-    try {
-      if (m && m.outputSchema && typeof m.outputSchema === 'object' && !m.outputSchema._def) {
-        try { m.outputSchema = z.object(m.outputSchema); } catch { m.outputSchema = z.any(); }
-      }
-    } catch {}
-    // If schemas are present but not Zod types, coerce to z.any()
-    try { if (m.inputSchema && !m.inputSchema._def) m.inputSchema = z.any(); } catch {}
-    try { if (m.outputSchema && !m.outputSchema._def) m.outputSchema = z.any(); } catch {}
+    // Disable output validation to avoid schema conversion/parse issues
+    try { m.outputSchema = undefined; } catch {}
     return _origRegisterTool(name, m, handler);
   };
 

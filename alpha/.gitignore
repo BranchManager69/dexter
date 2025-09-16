@@ -1,0 +1,15 @@
+# Node / general
+node_modules
+dist
+.DS_Store
+
+# Next.js
+.next
+out
+.vercel
+
+# Env
+.env
+.env.local
+.env.*.local
+
