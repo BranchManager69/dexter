@@ -7,14 +7,14 @@ Use PM2 to run dexter-api, dexter-fe, and dexter-mcp. PM2 will manage processes;
 npm i -g pm2
 # from repo root
 DEXTER_API_PORT=43030 DEXTER_FE_PORT=43017 NEXT_PUBLIC_API_ORIGIN=http://127.0.0.1:43030 \
-  pm2 start alpha/pm2-ecosystem.cjs --only dexter-api,dexter-fe
+  pm2 start alpha/ecosystem.config.cjs --only dexter-api,dexter-fe
 
 # MCP (existing server)
-# Rename or (re)start MCP under canonical name `dexter-mcp` (port 3930)
+# Rename or (re)start MCP under canonical name `dexter-mcp` (port 3928)
 pm2 stop token-ai-mcp-http || true
-pm2 start /home/branchmanager/websites/degenduel/token-ai/mcp/http-server-oauth.mjs \
+TOKEN_AI_MCP_PORT=3928 pm2 start mcp/http-server-oauth.mjs \
   --name dexter-mcp \
-  --cwd /home/branchmanager/websites/degenduel \
+  --cwd token-ai \
   --interpreter node
 pm2 delete token-ai-mcp-http || true
 pm2 save
@@ -46,10 +46,10 @@ pm2 save
 
 ## Env
 - API reads env from `alpha/dexter-api/.env` (loaded by the PM2 ecosystem file via dotenv).
-- FE uses `NEXT_PUBLIC_API_ORIGIN` (default: `https://api.dexter.cash`). Override via shell env before `pm2 start` or edit `alpha/pm2-ecosystem.cjs`.
+- FE defaults to port 43017; set `DEXTER_FE_PORT` if you need a different listener. Public API origin defaults to `https://api.dexter.cash`; override via `NEXT_PUBLIC_API_ORIGIN` before `pm2 start` or edit `alpha/ecosystem.config.cjs`.
 
 ## NGINX (unchanged from alpha split)
-- dexter.cash → FE (Next.js 3017) 
+- dexter.cash → FE (Next.js 43017) 
 - api.dexter.cash → API (3030)
 - mcp.dexter.cash → dexter-mcp (3930)
 

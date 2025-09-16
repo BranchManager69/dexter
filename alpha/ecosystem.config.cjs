@@ -1,13 +1,13 @@
 // PM2 ecosystem for Dexter alpha (FE + API). Run from repo root:
-// pm2 start alpha/pm2-ecosystem.cjs --only dexter-api,dexter-fe
+// pm2 start alpha/ecosystem.config.cjs --only dexter-api,dexter-fe
 // pm2 save
 
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, 'dexter-api', '.env') });
 
 const LOG_DIR = path.join(__dirname, '..', 'logs');
-const FE_PORT = process.env.DEXTER_FE_PORT || 3017;
-const API_PORT = process.env.DEXTER_API_PORT || process.env.PORT || 3030;
+const FE_PORT = Number(process.env.DEXTER_FE_PORT) || 43017;
+const API_PORT = Number(process.env.DEXTER_API_PORT || process.env.PORT) || 3030;
 
 module.exports = {
   apps: [
@@ -23,6 +23,7 @@ module.exports = {
         OPENAI_REALTIME_MODEL: process.env.OPENAI_REALTIME_MODEL || 'gpt-4o-realtime-preview',
         MCP_URL: process.env.MCP_URL || 'https://mcp.dexter.cash/mcp',
         PORT: API_PORT,
+        DEXTER_API_PORT: API_PORT,
         ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS || '*',
       },
       out_file: path.join(LOG_DIR, 'pm2-dexter-api.out.log'),
@@ -41,6 +42,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         NEXT_PUBLIC_API_ORIGIN: process.env.NEXT_PUBLIC_API_ORIGIN || 'https://api.dexter.cash',
+        DEXTER_FE_PORT: FE_PORT,
       },
       out_file: path.join(LOG_DIR, 'pm2-dexter-fe.out.log'),
       error_file: path.join(LOG_DIR, 'pm2-dexter-fe.err.log'),

@@ -9,7 +9,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/home/branchmanager/websites/dexter/alpha/dexter-fe
-ExecStart=/usr/bin/node node_modules/.bin/next start -p 3017
+ExecStart=/usr/bin/node node_modules/.bin/next start -p 43017
 Restart=always
 Environment=NODE_ENV=production
 
@@ -41,4 +41,3 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now dexter-fe dexter-api
 sudo systemctl status dexter-fe dexter-api --no-pager
 ```
-
