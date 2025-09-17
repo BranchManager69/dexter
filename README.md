@@ -29,7 +29,7 @@ Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https
 
 ## What’s Here
 - UI/API/WS: `token-ai/server.js` serves the live UI, analyzer API, events, and WS.
-- MCP HTTP: `token-ai/mcp/http-server-oauth.mjs` (proxied at `/mcp`).
+- MCP HTTP: `alpha/dexter-mcp/http-server-oauth.mjs` (proxied at `/mcp`).
 - Static UI: `public/` at repo root.
 - Reports & logs: `token-ai/reports/*` and `logs/`.
 - Docs: `OPERATIONS.md` (runnable details), `AGENTS.md` (internal notes).
@@ -180,7 +180,7 @@ Notes
   - `TOKEN_AI_MCP_TOOLSETS=all` (default) or CSV of `wallet,program,runs,reports,voice,web,trading`.
 - Per-session (HTTP): initialize with `POST /mcp?tools=reports,web`.
 - Through UI proxy: `/mcp-proxy?tools=…&userToken=…`.
-- Details: see `token-ai/mcp/README.md` → Toolset Scoping.
+- Details: see `alpha/dexter-mcp/README.md` → Toolset Scoping.
 
 ## PM2 → systemd differences
 - Process manager

@@ -160,7 +160,7 @@ node -e "require('./config/prisma.js').default.\$connect().then(() => console.lo
 ## Implementation Files
 
 ### MCP Tools
-`/token-ai/mcp/tools/account-linking.mjs`
+`/alpha/dexter-mcp/tools/account-linking.mjs`
 - check_dexter_account_link
 - generate_dexter_linking_code  
 - get_linked_dexter_account

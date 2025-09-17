@@ -20,7 +20,7 @@ Schema
 
 Code changes
 - Wallet resolution:
-  - resolveWalletIdOrNull added in token-ai/mcp/tools/trading.mjs; used by all trading tools.
+  - resolveWalletIdOrNull added in alpha/dexter-mcp/tools/trading.mjs; used by all trading tools.
   - http-server-oauth now forwards x-user-issuer, x-user-sub, x-user-email when available.
   - list_managed_wallets filters to caller’s linked wallets unless admin or include_admin.
   - Admins: configured via ADMIN_EMAILS / ADMIN_OAUTH_SUBS / ADMIN_BEARERS.

@@ -3,7 +3,7 @@ Alpha split scaffolding for the new multi-repo architecture. This is a working p
 Repos to extract after validation:
 - dexter-fe: Next.js 15 + TS frontend (voice + text chat)
 - dexter-api: Node 20 + TS API using OpenAI Agents SDK and hosted MCP tools
-- dexter-mcp: Existing MCP HTTP server (extract from token-ai/mcp)
+- dexter-mcp: Streamable HTTP + OAuth MCP server (moved from token-ai/mcp)
 
 What’s here now
 - alpha/dexter-api: Express + TypeScript API with
@@ -14,6 +14,7 @@ What’s here now
 - alpha/dexter-fe: Next.js TypeScript skeleton with two routes
   - /voice: connects via WebRTC using /realtime/session
   - /chat: text run via /agent/run
+- alpha/dexter-mcp: Streamable HTTP + OAuth MCP server (port 3930 default) with shared tools in `tools/`
 
 Quick start (API)
 1) cd alpha/dexter-api
@@ -28,6 +29,13 @@ Quick start (FE)
 3) npm install
 4) npm run dev
 5) open http://localhost:3017/voice and http://localhost:3017/chat
+
+Quick start (MCP HTTP/OAuth)
+1) cd alpha/dexter-mcp
+2) cp ../dexter-api/.env .env (or create and set TOKEN_AI_MCP_TOKEN, TOKEN_AI_MCP_PORT=3930, etc.)
+3) npm install (n/a, shared deps via repo root)
+4) TOKEN_AI_MCP_PORT=3930 node http-server-oauth.mjs
+5) curl https://dexter.cash/mcp/health
 
 Testing
 - API unit/integration: cd alpha/dexter-api && npm test

@@ -1,13 +1,16 @@
-// PM2 ecosystem for Dexter alpha (FE + API). Run from repo root:
-// pm2 start alpha/ecosystem.config.cjs --only dexter-api,dexter-fe
+// PM2 ecosystem for Dexter alpha (API + FE + MCP). Run from repo root:
+// pm2 start alpha/ecosystem.config.cjs --only dexter-api,dexter-fe,dexter-mcp
 // pm2 save
 
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 require('dotenv').config({ path: path.join(__dirname, 'dexter-api', '.env') });
+require('dotenv').config({ path: path.join(__dirname, 'dexter-mcp', '.env') });
 
 const LOG_DIR = path.join(__dirname, '..', 'logs');
 const FE_PORT = Number(process.env.DEXTER_FE_PORT) || 43017;
 const API_PORT = Number(process.env.DEXTER_API_PORT || process.env.PORT) || 3030;
+const MCP_PORT = Number(process.env.TOKEN_AI_MCP_PORT) || 3930;
 
 module.exports = {
   apps: [
@@ -46,6 +49,24 @@ module.exports = {
       },
       out_file: path.join(LOG_DIR, 'pm2-dexter-fe.out.log'),
       error_file: path.join(LOG_DIR, 'pm2-dexter-fe.err.log'),
+      time: true,
+      restart_delay: 2000,
+      max_restarts: 10,
+    },
+    {
+      name: 'dexter-mcp',
+      cwd: path.join(__dirname, 'dexter-mcp'),
+      script: 'http-server-oauth.mjs',
+      interpreter: 'node',
+      instances: 1,
+      exec_mode: 'fork',
+      env: {
+        NODE_ENV: process.env.NODE_ENV || 'production',
+        TOKEN_AI_MCP_PORT: MCP_PORT,
+        TOKEN_AI_MCP_PUBLIC_URL: process.env.TOKEN_AI_MCP_PUBLIC_URL || 'https://dexter.cash/mcp',
+      },
+      out_file: path.join(LOG_DIR, 'pm2-dexter-mcp.out.log'),
+      error_file: path.join(LOG_DIR, 'pm2-dexter-mcp.err.log'),
       time: true,
       restart_delay: 2000,
       max_restarts: 10,

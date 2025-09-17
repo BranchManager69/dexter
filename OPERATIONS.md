@@ -44,8 +44,8 @@ This document captures how Dexter (rebrand of Clanka) is deployed and operated o
     - `TOKEN_AI_BROADCAST_CHILD_LOGS=1`
     - `SUPABASE_URL`, `SUPABASE_ANON_KEY`
 - `dexter-mcp.service`
-  - Exec: Node 20 runs `mcp/http-server-oauth.mjs`
-  - CWD: `/home/branchmanager/websites/dexter/token-ai`
+  - Exec: Node 20 runs `alpha/dexter-mcp/http-server-oauth.mjs`
+  - CWD: `/home/branchmanager/websites/dexter/alpha/dexter-mcp`
   - Env:
     - `TOKEN_AI_MCP_PORT=3930`
     - `TOKEN_AI_MCP_PUBLIC_URL=https://dexter.cash/mcp`
@@ -62,7 +62,7 @@ Enable automatic restarts when code or env files change (excludes `public/`).
 - Install and enable watchers:
   - `sudo bash token-ai/scripts/install-systemd-watchers.sh`
 - What it watches:
-  - MCP: repo `.env`, `token-ai/.env`, `token-ai/mcp/`, `token-ai/mcp/tools/`, `token-ai/mcp/common.mjs`
+  - MCP: repo `.env`, `token-ai/.env`, `alpha/dexter-mcp/`, `alpha/dexter-mcp/tools/`, `alpha/dexter-mcp/common.mjs`
   - UI: repo `.env`, `token-ai/.env`, `token-ai/server.js`, `token-ai/server/`, `token-ai/core/`
 - Notes:
   - Directory watches trigger on create/rename/delete (e.g., git pull/checkout). In‑place edits that don’t touch directory entries may not trigger.
@@ -91,9 +91,9 @@ Enable automatic restarts when code or env files change (excludes `public/`).
 ## npm scripts (from repo root)
 - UI/MCP
   - `npm run start:ui` → `node token-ai/server.js --port ${TOKEN_AI_UI_PORT:-3017}`
-  - `npm run mcp` → `node token-ai/mcp/server.mjs`
-  - `npm run mcp:http` → `node token-ai/mcp/http-server.mjs`
-  - `npm run mcp:http:oauth` → `node token-ai/mcp/http-server-oauth.mjs`
+  - `npm run mcp` → `node alpha/dexter-mcp/server.mjs`
+  - `npm run mcp:http` → `node alpha/dexter-mcp/http-server.mjs`
+  - `npm run mcp:http:oauth` → `node alpha/dexter-mcp/http-server-oauth.mjs`
 - MCP tools/tests
   - `npm run status` → `node token-ai/scripts/status.mjs`
   - `npm run test:mcp` → `node token-ai/scripts/test-mcp-all.mjs`

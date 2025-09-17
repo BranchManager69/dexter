@@ -23,7 +23,7 @@ By default, the MCP server exposed all tool groups, which can bloat model contex
   - Subsequent requests reuse the same session with that toolset; no need to repeat the param
 
 - Per-process (STDIO):
-  - Start with `node token-ai/mcp/server.mjs --tools=trading,wallet,reports`
+  - Start with `node alpha/dexter-mcp/server.mjs --tools=trading,wallet,reports`
   - Same group names as HTTP; effect lasts for the lifetime of the process
 
 - Trading tools: advanced only. We keep preview/execute/unified tools and remove deprecated helpers over time.
@@ -51,11 +51,11 @@ Systemd (production):
 ## Endpoints and Transports
 
 ### Stdio
-- Typical for local tools: MCP client spawns `node /abs/path/to/token-ai/mcp/server.mjs`
+- Typical for local tools: MCP client spawns `node /abs/path/to/alpha/dexter-mcp/server.mjs`
 - No port or network; lifecycle bound to client process
 
 ### HTTP (Streamable HTTP)
-- URL: `http://localhost:${TOKEN_AI_MCP_PORT:-3928}/mcp`
+- URL: `http://localhost:${TOKEN_AI_MCP_PORT:-3930}/mcp`
 - Auth: Bearer token via `TOKEN_AI_MCP_TOKEN` or OAuth bearer (when OAuth enabled)
 - CORS: `TOKEN_AI_MCP_CORS` (default `*`) and `Mcp-Session-Id` exposed
 - Implementation: `mcp/http-server-oauth.mjs` using `StreamableHTTPServerTransport`
@@ -105,7 +105,7 @@ Identity → wallet mapping
 
 ## Environment Variables
 
-- `TOKEN_AI_MCP_PORT` (default: `3928`): HTTP port
+- `TOKEN_AI_MCP_PORT` (default: `3930`): HTTP port
 - `TOKEN_AI_MCP_TOKEN` (optional): Bearer token required if set
 - `TOKEN_AI_MCP_CORS` (default: `*`): Allowed origin(s)
 - `TOKEN_AI_MCP_OAUTH` (default: `false`): Enable OAuth mode (http-server-oauth)
@@ -178,8 +178,8 @@ Public base: `https://<host>/mcp`
   - `/.well-known/openid-configuration`
 
 Nginx tips
-- `location = /mcp` → `proxy_pass http://127.0.0.1:3928/mcp`
-- `location ^~ /mcp/` → `proxy_pass http://127.0.0.1:3928$request_uri`
+- `location = /mcp` → `proxy_pass http://127.0.0.1:3930/mcp`
+- `location ^~ /mcp/` → `proxy_pass http://127.0.0.1:3930$request_uri`
 - Expose/allow `Mcp-Session-Id` in CORS/headers; disable buffering for long streams
 
 ## Tools
@@ -298,8 +298,8 @@ ChatGPT canonical
 
 ## Using With MCP Clients
 
-- Stdio‑mode clients (spawn the server): configure the command to `node /abs/path/to/token-ai/mcp/server.mjs`
-- HTTP‑mode clients: point to `http://host:3928/mcp`, add `Authorization: Bearer <TOKEN_AI_MCP_TOKEN>` if set
+- Stdio‑mode clients (spawn the server): configure the command to `node /abs/path/to/alpha/dexter-mcp/server.mjs`
+- HTTP‑mode clients: point to `http://host:3930/mcp`, add `Authorization: Bearer <TOKEN_AI_MCP_TOKEN>` if set
 - Capabilities: tools, resources, prompts (no prompts registered currently), logging
 
 ### Agent Reasoning Controls (MCP Quick Ref)

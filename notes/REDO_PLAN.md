@@ -41,7 +41,7 @@ This is a practical, incremental plan to refactor and harden Dexter while preser
 ## Phase 2 — Architecture Boundaries (proposal)
 - Services:
   - UI/API: `token-ai/server.js` serving UI + API.
-  - MCP (OAuth): `token-ai/mcp/*` HTTP server.
+  - MCP (OAuth): `alpha/dexter-mcp/*` HTTP server.
   - Analyzer worker: isolated module with explicit I/O to `reports/` and logs.
   - Inspector: TS client/CLI with separate build/test.
 - Contracts:

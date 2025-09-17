@@ -35,9 +35,28 @@ Environment=NODE_ENV=production
 WantedBy=multi-user.target
 ```
 
+## dexter-mcp.service
+```
+[Unit]
+Description=Dexter MCP (Streamable HTTP + OAuth)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/branchmanager/websites/dexter/alpha/dexter-mcp
+EnvironmentFile=/home/branchmanager/websites/dexter/.env
+Environment=TOKEN_AI_MCP_PORT=3930
+ExecStart=/usr/bin/node http-server-oauth.mjs
+Restart=always
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
 Reload + restart:
 ```
 sudo systemctl daemon-reload
-sudo systemctl enable --now dexter-fe dexter-api
-sudo systemctl status dexter-fe dexter-api --no-pager
+sudo systemctl enable --now dexter-fe dexter-api dexter-mcp
+sudo systemctl status dexter-fe dexter-api dexter-mcp --no-pager
 ```

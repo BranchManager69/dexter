@@ -343,7 +343,7 @@ if (false) app.post('/realtime/tool-call', async (req, res) => {
     }
     // Helper: generic MCP bridge (HTTP)
     async function mcpCall(toolName, toolArgs){
-      const MCP_PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
+      const MCP_PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
       const TOKEN = process.env.TOKEN_AI_MCP_TOKEN || '';
       const XUSER = String((req.headers['x-user-token']||'')).trim();
       const initBody = JSON.stringify({ jsonrpc:'2.0', id: '1', method:'initialize', params:{ clientInfo:{ name:'voice-bridge', version:'0.1' }, protocolVersion:'2024-11-05', capabilities:{} } });
@@ -1083,7 +1083,7 @@ if (false) app.get('/mcp-proxy/.well-known/openid-configuration', (req, res) => 
 // Proxy OAuth flows under /mcp-proxy to the local MCP server endpoints
 if (false) app.all('/mcp-proxy/authorize', async (req, res) => {
   try {
-    const port = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
+    const port = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
     const qs = req.originalUrl.split('?')[1] || '';
     const target = `http://127.0.0.1:${port}/mcp/authorize${qs ? ('?' + qs) : ''}`;
     const r = await fetch(target, { method: 'GET', headers: { 'accept': 'text/html' }, redirect: 'manual' });
@@ -1108,7 +1108,7 @@ if (false) app.all('/mcp-proxy/authorize', async (req, res) => {
 
 if (false) app.all('/mcp-proxy/token', async (req, res) => {
   try {
-    const port = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
+    const port = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
     const target = `http://127.0.0.1:${port}/mcp/token`;
     const bodyRaw = await new Promise((resolve) => { let data=''; req.on('data', c=> data+=c.toString()); req.on('end', ()=> resolve(data)); req.on('error', ()=> resolve('')); });
     const body = bodyRaw && bodyRaw.length ? bodyRaw : (typeof req.body === 'string' ? req.body : new URLSearchParams(req.body || {}).toString());
@@ -1124,7 +1124,7 @@ if (false) app.all('/mcp-proxy/token', async (req, res) => {
 
 if (false) app.all('/mcp-proxy/userinfo', async (req, res) => {
   try {
-    const port = Number(process.env.TOKEN_AI_MCP_PORT || 3928);
+    const port = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
     const target = `http://127.0.0.1:${port}/mcp/userinfo`;
     const hdr = new Headers();
     const incomingAuth = req.headers['authorization'];

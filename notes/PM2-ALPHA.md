@@ -7,12 +7,12 @@ Use PM2 to run dexter-api, dexter-fe, and dexter-mcp. PM2 will manage processes;
 npm i -g pm2
 # from repo root
 DEXTER_API_PORT=43030 DEXTER_FE_PORT=43017 NEXT_PUBLIC_API_ORIGIN=http://127.0.0.1:43030 \
-  pm2 start alpha/ecosystem.config.cjs --only dexter-api,dexter-fe
+  pm2 start alpha/ecosystem.config.cjs --only dexter-api,dexter-fe,dexter-mcp
 
 # MCP (existing server)
-# Rename or (re)start MCP under canonical name `dexter-mcp` (port 3928)
+# Rename or (re)start MCP under canonical name `dexter-mcp` (port 3930)
 pm2 stop token-ai-mcp-http || true
-TOKEN_AI_MCP_PORT=3928 pm2 start mcp/http-server-oauth.mjs \
+TOKEN_AI_MCP_PORT=3930 pm2 start mcp/http-server-oauth.mjs \
   --name dexter-mcp \
   --cwd token-ai \
   --interpreter node

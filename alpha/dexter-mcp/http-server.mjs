@@ -8,13 +8,15 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import dotenv from 'dotenv';
 import path from 'node:path';
 
-// Ensure env vars are loaded from Dexter repo root and local token-ai folder
+// Ensure env vars are loaded from Dexter repo root, legacy token-ai/.env, and local MCP folder
 try {
   const HERE = path.resolve(path.dirname(new URL(import.meta.url).pathname));
-  const TA_ROOT = path.resolve(HERE, '..');
-  const REPO_ROOT = path.resolve(TA_ROOT, '..');
+  const ALPHA_ROOT = path.resolve(HERE, '..');
+  const REPO_ROOT = path.resolve(ALPHA_ROOT, '..');
+  const LEGACY_TOKEN_AI = path.join(REPO_ROOT, 'token-ai');
   dotenv.config({ path: path.join(REPO_ROOT, '.env') });
-  dotenv.config({ path: path.join(TA_ROOT, '.env') });
+  dotenv.config({ path: path.join(LEGACY_TOKEN_AI, '.env') });
+  dotenv.config({ path: path.join(HERE, '.env') });
 } catch {}
 
 const PORT = Number(process.env.TOKEN_AI_MCP_PORT || 3930);
