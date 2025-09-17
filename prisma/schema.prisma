@@ -689,7 +689,7 @@ model ai_strategy_parameters {
 // Account linking between MCP OAuth and Supabase users
 model account_links {
   id                String   @id @default(uuid())
-  oauth_provider    String   @db.VarChar(20) // "claude" or "chatgpt"
+  oauth_provider    String   @db.VarChar(128) // OAuth issuer or provider slug
   oauth_subject     String   @db.VarChar(255) // Their unique ID from OAuth
   supabase_user_id  String   @db.VarChar(255) // Supabase auth.users.id
   linked_at         DateTime @default(now()) @db.Timestamptz(6)
@@ -703,7 +703,7 @@ model account_links {
 // Temporary linking codes for account connection
 model linking_codes {
   code              String   @id @db.VarChar(8) // The 6-8 char code
-  oauth_provider    String?  @db.VarChar(20) // Set if initiated from MCP
+  oauth_provider    String?  @db.VarChar(128) // Set if initiated from MCP
   oauth_subject     String?  @db.VarChar(255) // Set if initiated from MCP
   supabase_user_id  String?  @db.VarChar(255) // Set if initiated from web
   created_at        DateTime @default(now()) @db.Timestamptz(6)
