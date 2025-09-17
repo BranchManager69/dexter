@@ -415,7 +415,7 @@ TOKEN_AI_DOMAIN=insider-patterns npm run socials:agent -- <MINT_ADDRESS>
 
 ### Realtime Voice (Optional)
 - Set `OPENAI_API_KEY` in `.env`.
-- **PRODUCTION**: Use `sudo systemctl restart dexter-ui.service` (see [SYSTEM_SERVICES.md](../SYSTEM_SERVICES.md))
+- **PRODUCTION (PM2)**: `pm2 restart dexter-api dexter-fe && pm2 save`
 - **DEVELOPMENT ONLY**: Start the UI: `node server.js --port 3013` and open `/agent-live.html`.
 - Click the “Voice: Off” button to start a WebRTC session. The server mints a short‑lived token at `POST /realtime/sessions` and connects to OpenAI Realtime.
 - For production, set `TOKEN_AI_EVENTS_TOKEN` and ensure your page includes `window.AGENT_TOKEN = '<same-token>'` (or a proxy injects header `x-agent-token`).
@@ -496,13 +496,15 @@ Output locations:
 
 ---
 
-## Systemd Deployment (Dexter)
+## PM2 Deployment (Dexter)
 
-- Services: `dexter-ui` (UI/API/WS) and `dexter-mcp` (MCP HTTP)
-- Start/Stop/Restart: `sudo systemctl start|stop|restart dexter-ui dexter-mcp`
-- Status: `systemctl status dexter-ui` / `systemctl status dexter-mcp`
-- Logs: `sudo journalctl -u dexter-ui -f` / `sudo journalctl -u dexter-mcp -f`
-- Nginx reload: `sudo nginx -t && sudo systemctl reload nginx`
+- Apps: `dexter-api` (API), `dexter-fe` (Next.js FE), `dexter-mcp` (MCP HTTP)
+- Start: `pm2 start alpha/ecosystem.config.cjs --only dexter-api,dexter-fe,dexter-mcp`
+- Stop: `pm2 stop dexter-api dexter-fe dexter-mcp`
+- Restart: `pm2 restart dexter-api dexter-fe dexter-mcp && pm2 save`
+- Status: `pm2 status`
+- Logs: `pm2 logs <name>` (e.g., `pm2 logs dexter-mcp`)
+- Nginx reload: `sudo nginx -t && sudo nginx -s reload`
 - MCP connector setup: see `token-ai/mcp/README.md`
 
 ---

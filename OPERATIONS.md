@@ -159,7 +159,7 @@ pm2 save
 Key commands:
 ```bash
 sudo nginx -t                       # config test
-sudo systemctl reload nginx         # zero-downtime reload
+sudo nginx -s reload                # zero-downtime reload
 sudo certbot renew --dry-run        # monthly cron handles real renewals
 ```
 

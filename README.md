@@ -3,13 +3,13 @@
 ![status](https://img.shields.io/badge/status-live-brightgreen)
 ![domain](https://img.shields.io/badge/domain-dexter.cash-1f6feb)
 ![node](https://img.shields.io/badge/node-20.x-026e00?logo=node.js&logoColor=white)
-![process](https://img.shields.io/badge/process%20manager-systemd-2aa889)
+![process](https://img.shields.io/badge/process%20manager-PM2-2aa889)
 ![proxy](https://img.shields.io/badge/reverse%20proxy-NGINX%2BTLS-009639?logo=nginx&logoColor=white)
 ![mcp](https://img.shields.io/badge/MCP-Streamable%20HTTP-8A2BE2)
 
-A standalone deployment of the Token‑AI UI + Analyzer + OAuth‑enabled MCP stack, rebranded as Dexter. This repo is decoupled from Clanka and runs under systemd with NGINX and TLS.
+A standalone deployment of the Token‑AI UI + Analyzer + OAuth‑enabled MCP stack, rebranded as Dexter. This repo is decoupled from Clanka and runs under PM2 with NGINX and TLS.
 
-Use this README for day‑to‑day ops. It supersedes any old PM2‑based notes.
+Use this README for day‑to‑day ops. It supersedes any old systemd‑based notes.
 
 Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https://dexter.cash/agent-dashboard.html) · [MCP Health](https://dexter.cash/mcp/health)
 
@@ -17,14 +17,14 @@ Quick links: [Live UI](https://dexter.cash/agent-live.html) · [Dashboard](https
 - What’s here
 - Local Replication Quickstart
 - Environment & Ports
-- Operating (systemd)
+- Operating (PM2)
 - Database (Prisma → Supabase)
 - Public Deployment Checklist
 - Updating & Deploying
 - Logs & Debugging
 - MCP endpoints
 - MCP toolsets & trading
-- PM2 → systemd differences
+- PM2 usage
 - Troubleshooting
 
 ## What’s Here
@@ -78,31 +78,35 @@ See `AGENTS.md` for contributor guidelines and coding conventions.
 - UI/API/WS port
   - Local default: `3013` (`npm run start`)
   - Alt script default: `3017` (`npm run start:ui` or set `TOKEN_AI_UI_PORT`)
-  - Production (systemd): `3017`
+  - Production (PM2): `3017`
 - MCP HTTP port
   - Local default: `3930` (`npm run mcp:http:oauth`)
-  - Production (systemd): `3930` (proxied at `/mcp`)
+  - Production (PM2): `3930` (proxied at `/mcp`)
 - Browser UI auth
   - Optional Supabase: set `SUPABASE_URL` and `SUPABASE_ANON_KEY` to enable magic‑link login.
   - For localhost, `TOKEN_AI_DEMO_MODE=1` provides a frictionless path without an external IdP.
 
-## Operating (systemd)
-- Services
-  - `dexter-ui`: UI/API/WS on port `3017`
-  - `dexter-mcp`: MCP HTTP on port `3930`
-- Start/Stop/Restart
-  - `sudo systemctl start|stop|restart dexter-ui dexter-mcp`
-  - Enable at boot: `sudo systemctl enable dexter-ui dexter-mcp`
-  - Disable: `sudo systemctl disable dexter-ui dexter-mcp`
-- Status
-  - `systemctl status dexter-ui`
-  - `systemctl status dexter-mcp`
+## Operating (PM2)
+- Apps (see `alpha/ecosystem.config.cjs`)
+  - `dexter-api`: API on port `3030` (default)
+  - `dexter-fe`: Next.js frontend on `DEXTER_FE_PORT` (default 43017)
+  - `dexter-mcp`: MCP HTTP on `TOKEN_AI_MCP_PORT` (default 3930)
+- Build (first time or after changes)
+  - `cd alpha/dexter-api && npm ci && npm run build`
+  - `cd alpha/dexter-fe && npm ci && npm run build`
+- Start / Status / Logs
+  - `pm2 start alpha/ecosystem.config.cjs --only dexter-api,dexter-fe,dexter-mcp`
+  - `pm2 status`
+  - `pm2 logs dexter-api` (or `dexter-fe`, `dexter-mcp`)
+- Restart / Stop / Save
+  - `pm2 restart dexter-api dexter-fe dexter-mcp`
+  - `pm2 stop dexter-api dexter-fe dexter-mcp`
+  - `pm2 save` (persist across reboots; run `pm2 startup` once and follow instructions)
 - NGINX
- - Config: `/etc/nginx/sites-available/dexter.cash` (enabled)
- - Reload: `sudo nginx -t && sudo systemctl reload nginx`
- - Static HTML cache-busting: HTML is auto‑stamped on deploy so JS loads fresh.
-   - The UI service runs a pre‑start stamper that writes `?v=<version>` tokens to public HTML.
-   - A systemd path watcher also stamps when `public/js/` or the HTML files change.
+  - Config: `/etc/nginx/sites-available/dexter.cash` (enabled)
+  - Reload: `sudo nginx -t && sudo nginx -s reload`
+  - Static HTML cache-busting: HTML is auto‑stamped on deploy so JS loads fresh.
+    - The UI service runs a pre‑start stamper that writes `?v=<version>` tokens to public HTML.
 
 ## CLI Shortcuts (npm)
 - Health
@@ -113,9 +117,10 @@ See `AGENTS.md` for contributor guidelines and coding conventions.
 - MCP tests
   - `npm run mcp:local` → quick MCP client test at `http://localhost:3930/mcp`
   - `npm run mcp:prod` → quick MCP client test at `https://dexter.cash/mcp`
-- Services (systemd)
-  - `npm run ui:status` / `npm run mcp:status` → prints `active` if up
-  - `npm run ui:restart` / `npm run mcp:restart` → restarts the service (uses sudo)
+- Services (PM2)
+  - `pm2 status`
+  - `pm2 restart dexter-api dexter-fe dexter-mcp`
+  - `pm2 logs dexter-mcp`
 
 Notes
 - `npm run mcp` starts the stdio MCP server (no port) and is not used in production.
@@ -141,14 +146,14 @@ Notes
 - Apply env updates
   - `cp .env token-ai/.env`
 - Restart services
-  - `sudo systemctl restart dexter-ui dexter-mcp`
+  - `pm2 restart dexter-api dexter-fe dexter-mcp && pm2 save`
 
 ## Public Deployment Checklist
 - Domain + TLS
   - NGINX reverse proxy with TLS and HTTP→HTTPS redirect
   - Proxy `/mcp` and expose `/.well-known/*` for OAuth metadata
 - Processes
-  - systemd units for `dexter-ui` (UI/API/WS) and `dexter-mcp` (MCP HTTP)
+  - PM2 apps using `alpha/ecosystem.config.cjs` (`dexter-api`, `dexter-fe`, `dexter-mcp`)
 - Secrets & Env
   - Set `OPENAI_API_KEY`, `TOKEN_AI_MCP_TOKEN`, and (optional) `SUPABASE_URL`/`SUPABASE_ANON_KEY`
   - Configure OIDC endpoints if not using `TOKEN_AI_DEMO_MODE`
@@ -158,11 +163,10 @@ Notes
   - Rotate tokens regularly; never expose private keys/logs
 
 ## Logs & Debugging
-- Journald (live)
-  - UI: `sudo journalctl -u dexter-ui -f`
-  - MCP: `sudo journalctl -u dexter-mcp -f`
-- Recent window
-  - `sudo journalctl -u dexter-ui --since "1 hour ago"`
+- PM2 logs
+  - `pm2 logs dexter-api`
+  - `pm2 logs dexter-fe`
+  - `pm2 logs dexter-mcp`
 - Browser automation
   - Playwright smoke: `cd token-ai && node -e "(async()=>{const {chromium}=await import('playwright');const b=await chromium.launch();await b.close();console.log('ok')})()"`
 - UI events & child logs
@@ -182,27 +186,22 @@ Notes
 - Through UI proxy: `/mcp-proxy?tools=…&userToken=…`.
 - Details: see `alpha/dexter-mcp/README.md` → Toolset Scoping.
 
-## PM2 → systemd differences
-- Process manager
-  - Before: `pm2 start ai-ui`, `pm2 restart ai-ui`, `pm2 logs ai-ui`.
-  - Now: `systemctl start|restart dexter-ui`, `journalctl -u dexter-ui -f`.
-- Multiple services
-  - UI/API/WS (`dexter-ui`) and MCP (`dexter-mcp`) are separate units.
-- Env changes
-  - Edit `.env` at repo root, copy to `token-ai/.env`, restart services.
-- Cleanup old PM2 app (one‑time)
-  - `pm2 list`
-  - `pm2 stop ai-ui && pm2 delete ai-ui && pm2 save`
+## PM2 usage
+- Start all: `pm2 start alpha/ecosystem.config.cjs`
+- Start subset: `pm2 start alpha/ecosystem.config.cjs --only dexter-mcp`
+- Show: `pm2 status`
+- Logs: `pm2 logs <name>`
+- Persist: `pm2 save` (after `pm2 startup` once)
 
 ## Troubleshooting
 - UI shows stale env
   - Hard refresh, then `curl -s https://dexter.cash/agent-env.js?v=1`
   - Confirm `TOKEN_AI_MCP_URL` points to `http://127.0.0.1:3930/mcp`
-  - `sudo systemctl restart dexter-ui`
+  - `pm2 restart dexter-api dexter-fe dexter-mcp && pm2 save`
 - WebSocket issues
   - Verify NGINX routes `/ws` to `127.0.0.1:3017` and that `dexter-ui` is active.
 - MCP OAuth errors
-  - Check `sudo journalctl -u dexter-mcp -f` and visit `/.well-known/openid-configuration`.
+  - Check `pm2 logs dexter-mcp` and visit `/.well-known/openid-configuration`.
 - Playwright missing libs
   - Error mentions system libraries: install runtime deps, then `npx playwright install chromium` again.
 - Port conflicts
@@ -210,4 +209,4 @@ Notes
 
 ---
 
-See `OPERATIONS.md` for exact unit templates and deeper operational notes.
+See `OPERATIONS.md` for PM2 ecosystem config details and deeper operational notes.

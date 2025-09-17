@@ -45,17 +45,15 @@
 - Avoid committing Telegram `.session` artifacts; ensure sessions and media caches are gitignored.
 - Networked tools respect provider limits; prefer `--x-concurrency=1–2` to reduce bans.
 
-## Systemd Deployment (Dexter)
-- Services: `dexter-ui` (UI/API/WS) and `dexter-mcp` (MCP HTTP)
-- Start/Stop/Restart: `sudo systemctl start|stop|restart dexter-ui dexter-mcp`
-- Status: `systemctl status dexter-ui` / `systemctl status dexter-mcp`
-- Logs: `sudo journalctl -u dexter-ui -f` / `sudo journalctl -u dexter-mcp -f`
-- Notes: Production runs under systemd. Local ad‑hoc runs via `node server.js` are fine for development.
+## PM2 Deployment (Dexter)
+- Apps: `dexter-api` (API), `dexter-fe` (Next.js FE), `dexter-mcp` (MCP HTTP)
+- Start/Stop/Restart: `pm2 start alpha/ecosystem.config.cjs --only dexter-api,dexter-fe,dexter-mcp` / `pm2 restart dexter-api dexter-fe dexter-mcp && pm2 save`
+- Status: `pm2 status` · Logs: `pm2 logs <name>`
 
 Important
-- Use systemd only in prod. Do not use pm2 for `dexter-ui` or `dexter-mcp`.
+- Use PM2 in prod. Local ad‑hoc runs via `node server.js` are fine for development.
 - Default ports: UI `3017`, MCP `3930`.
-- After client‑side Realtime code changes, restart both services and hard‑refresh the browser to load updated assets.
+- After client‑side Realtime code changes, restart the PM2 apps and hard‑refresh the browser to load updated assets.
 
 MCP‑Only Tools
 - The server no longer exposes local function tools under `/realtime/*`; all tool calls run via MCP.
