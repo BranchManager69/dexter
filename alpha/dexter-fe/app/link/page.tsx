@@ -100,6 +100,7 @@ export default function LinkPage() {
     headers.set('Content-Type', 'application/json');
     const response = await fetch(apiUrl(path), {
       ...init,
+      credentials: init?.credentials ?? 'include',
       headers,
     });
     return response;
