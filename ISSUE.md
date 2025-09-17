@@ -1,91 +1,58 @@
 # Dexter MCP OAuth Linking Failure – Investigation Summary
 
+_Last updated: 2025-09-17 07:05 UTC_
+
 ## Mission Context
-- **Project**: Dexter (Token-AI successor) – split into API (`alpha/dexter-api`), Next.js UI (`alpha/dexter-fe`), and MCP server (`alpha/dexter-mcp`).
-- **Goal of current workstream**: Let Claude/ChatGPT MCP connectors authenticate via OAuth, obtain a per-user identity (`issuer`, `subject`), and generate 6-character linking codes so users can bind their MCP identity to a Supabase/Dexter account via https://dexter.cash/link.
-- **Progress so far**:
-  - Frontend `/link` page is live and talking to the API through same-origin rewrites (solves CSP).
-  - API exposes `/auth/config`, `/api/link/*`, and `/api/identity/*` and reads env vars from the repo root.
-  - MCP server is running from `alpha/dexter-mcp/http-server-oauth.mjs` under PM2, with OAuth endpoints `/authorize`, `/token`, `/userinfo`, etc.
+- **Project**: Dexter (Token-AI successor) – services split across `alpha/dexter-api`, `alpha/dexter-fe`, and `alpha/dexter-mcp`.
+- **Objective**: Allow Claude/ChatGPT MCP connectors to authenticate via OAuth, obtain a stable identity (`issuer`, `sub`), and generate 6-character linking codes so users can bind their MCP identity to a Supabase/Dexter account through https://dexter.cash/link.
 
-## The Symptom We’re Chasing
-- When a connector client (Claude or ChatGPT) calls `generate_dexter_linking_code`, the tool returns `no_oauth_identity` and the connector echoes “Tool execution failed”.
-- `list_my_wallets` fails for the same reason. `auth_info` always “works” because it falls back to an environment wallet; therefore users see misleading success (“wallet_id resolved”) even though no OAuth subject is flowing through.
+## Current Behaviour
+- Connectors can connect and run `auth_info` (falls back to the environment wallet), but `generate_dexter_linking_code` and `check_dexter_account_link` always return `no_oauth_identity` → “Tool execution failed”.
+- MCP logs show repeated session cache hits (`issuer=https://dexter.cash/mcp sub=user:…`) but no logging from inside the linking tool (meaning the tool is never reached, or the identity is stripped before the handler executes).
+- When the tools fall back to the environment wallet, logs show `issuer=∅ subject=∅ bearer=∅`, which matches what the connectors display.
 
-## What the Logs Reveal
-1. **OAuth handshake does happen**:
-   ```
-   [oauth] authorize request query=?response_type=code...
-   [oauth] token grant type=authorization_code
-   ```
-   We store the subject per session (`sessionIdentity.set()`), e.g. `issuer=https://dexter.cash/mcp sub=user:db9064f2a677`.
+## What We’ve Confirmed
+1. **OAuth handshake works**: `/authorize` issues a code, `/token` returns access + refresh tokens, `/userinfo` echoes `sub` (format `user:xxxxxxxxxxxx`).
+2. **Session cache contains the subject**: every new connector session logs `[identity] headers sid=… issuer=https://dexter.cash/mcp sub=user:…` followed by cache hits.
+3. **Manual reproduction**:
+   - Ran PKCE flow by hand, obtained `access_token=atk_…` and `refresh_token=rtk_…`.
+   - Immediately attempted to call `generate_dexter_linking_code` using the MCP client SDK against `https://dexter.cash/mcp`.
+   - Server responded `HTTP 401 {"jsonrpc":"2.0","error":{"code":-32000,"message":"Invalid token or user not authorized"}}`.
+   - Therefore, the failure happens on our side: after issuing the token, `validateTokenAndClaims` rejects it before any tool handler runs.
+4. **Logging instrumentation**: added logs around `validateTokenAndClaims`. After the restart we see:
+   - `[oauth] validate token start { token: '…' }`
+   - `[oauth] token rejected { token: '…' }`
+   indicating the access token is never recognized when the tool request arrives.
 
-2. **On tool calls** we see repeated cache hits:
-   ```
-   [identity] hit cache sid=<guid> issuer=https://dexter.cash/mcp sub=user:...
-   ```
-   confirming the subject lives in the session map.
+## Hypothesis
+- The access token we mint is stored in process memory (`issuedTokens.set(accessToken, …)`), but subsequent tool requests either:
+  - arrive without an `Authorization: Bearer …` header (e.g., connector or client dropped it), or
+  - present a token that the server no longer knows about (process restart cleared `issuedTokens`, or we trimmed/changed the token before storing), or
+  - `validateTokenAndClaims` is looking for a different identity claim (e.g., expects `email`, which `/userinfo` does not return).
+- Because the MCP server rejects the token outright, the tool handler never executes, which is why the `[linking] missing identity` log never appears.
 
-3. **But when `auth_info` runs** it reports:
-   ```json
-   { "source": "env", "wallet_id": "e92af215-d498-47aa-b448-e649752f874c", "session_id": "stdio", "issuer": "∅", "subject": "∅" }
-   ```
-   meaning the HTTP request that reached `wallet-auth.mjs`’s handler carried *no* `x-user-issuer`/`x-user-sub` headers and no `__issuer`/`__sub` payload.
+## Next Steps (Actionable)
+1. **Trace `validateTokenAndClaims` end-to-end**:
+   - Log the raw `Authorization` header and token value right before validation.
+   - Log whether we find a matching entry in `issuedTokens` or rely on `/userinfo`.
+   - Confirm that the token stored during `/token` handling is exactly what the client later presents.
+2. **Ensure token persistence across requests**:
+   - If PM2 restarts the MCP process, all in-memory tokens disappear. Decide whether to persist tokens (e.g., Redis) or document that long-lived tokens aren’t supported.
+   - Short term: test again without restarting between `/token` and the tool call to rule out this issue.
+3. **Verify `/userinfo` output**:
+   - It currently returns `{ sub, scope }`. Claude/ChatGPT may expect `email` or other claims. Consider adding email if known, or mirror Clanka’s behaviour.
+4. **Rerun manual tool call once validation is fixed**:
+   - When `validateTokenAndClaims` accepts the token, call `generate_dexter_linking_code` again and capture the response/logs.
+5. **Only after tokens are accepted** retest with Claude/ChatGPT to confirm the connectors receive a real linking code.
 
-4. We inserted instrumentation inside `generate_dexter_linking_code` to log when no identity arrives, expecting:
-   ```
-   [linking] missing identity { issuer: '', subject: '', args: {...}, sid: ..., headers: {...} }
-   ```
-   but that log never appears because the connector never delivers the tool invocation (it errors before the MCP handler runs).
+## File Pointers
+- `alpha/dexter-mcp/http-server-oauth.mjs` – OAuth flow, token storage, identity injection.
+- `alpha/dexter-mcp/tools/account-linking.mjs` – linking tools (expects issuer/sub via headers or `__issuer`/`__sub`).
+- `alpha/dexter-mcp/tools/wallet-auth.mjs` – `auth_info`, `list_my_wallets`, wallet resolution.
+- `alpha/dexter-fe/app/link/page.tsx` – user-facing linking UI.
+- `alpha/dexter-api/src/routes/linking.ts` – REST endpoints consumed by the UI.
 
-## What Changed in the Repo
-- UI: rewrites + relative API origin to pass CSP.
-- API: new routes & env loading.
-- MCP tooling (`account-linking.mjs`): added `getIdentity(args, extra)` to read identity from body (`__issuer`, `__sub`, `__email`) in addition to headers and log missing identity cases.
-- MCP restarts performed after each code change.
-
-## Confirmed Facts
-- Supabase `.env` values exist only at repo root; all services load from there.
-- OAuth auto-approval is in place (no consent UI); connectors get codes and tokens successfully.
-- Session identity map is populated (`sessionIdentity` has `issuer/sub` per session ID).
-- Tool arguments arriving from Claude do **not** include `__issuer` / `__sub`; at least they didn’t reach the handler files (no logs yet).
-- Connectors probably short-circuit the call before hitting our HTTP endpoint when they detect missing identity, returning “Tool execution failed” client-side.
-
-## Outstanding Unknowns
-1. **Where the identity is dropped**: We see it in the session cache, but not in the request body/headers that reach the tool. Possibilities:
-   - Claude never injects the subject into JSON—maybe it expects `userinfo` to supply certain claims we aren’t providing.
-   - Our `injectIdentityIntoBody` call in `http-server-oauth.mjs` might not be triggered for subsequent POSTs if the connector bypasses it (e.g., client returns early).
-2. **Connector behavior**: The “Tool execution failed” message may be happening before any HTTP request is made. Need to confirm by capturing a HAR or using `npm run mcp:prod` to simulate a call.
-3. **Userinfo claims**: We currently return whatever `validateTokenAndClaims` gives us—ensure `sub`, `email`, etc., are present so connectors trust the identity.
-4. **Linking flows**: Without a successful tool call, no linking code is written to `linking_codes` table—front-end link page can’t complete.
-
-## Repro Steps (Claude)
-1. Connect the Dexter MCP connector (auto authorizes).
-2. Run `generate_dexter_linking_code` → Claude responds “Tool execution failed”; MCP log shows handshake + cache hits but **no** tool invocation lines.
-3. Run `auth_info` → returns env wallet, logging `[mcp-tool] ok name=auth_info... structured=... issuer=∅ subject=∅ bearer=∅`.
-
-Same behavior on ChatGPT connector (messages reference the same env wallet ID).
-
-## Initial Hypotheses
-- Claude/ChatGPT require the `/userinfo` response to contain specific fields or map the token to an email; if missing, they treat the session as unauthenticated and refuse tool calls.
-- We may need to register the MCP client and use their documented OAuth flows rather than relying on “auto approve” built-in provider.
-- Alternatively, connectors expect `x-user-id` (or similar) and we’re naming headers differently. Need to inspect official connector docs.
-
-## Next Steps for a “Superfixer”
-1. **Capture actual connector HTTP traffic** to confirm whether `generate_dexter_linking_code` ever hits the server (check access logs or run `npm run mcp:prod` to reproduce manually).
-2. **Verify `/userinfo` output**: ensure it returns a JSON body with `sub`, `email`, and any provider-specific fields the connectors expect. Compare to their documentation/examples.
-3. **Force identity injection**: inside `StreamableHTTPServerTransport.handleRequest`, log the raw body/headers for any POST to confirm whether `injectIdentityIntoBody` is executing.
-4. **Adjust OAuth provider behavior** if needed (e.g., persist tokens, include id_token with desired claims, or change header names) so connectors pick up the subject.
-5. Once identity flows correctly, re-test `generate_dexter_linking_code` and follow the linking cycle (code → `/link` page → `account_links` write) end-to-end.
-
-## Key Files
-- `alpha/dexter-mcp/http-server-oauth.mjs` – transport/OAuth logic, identity caching, request injection.
-- `alpha/dexter-mcp/tools/account-linking.mjs` – linking tools (requires issuer/sub).
-- `alpha/dexter-mcp/tools/wallet-auth.mjs` – `auth_info`, `list_my_wallets`, wallet resolution logic.
-- `alpha/dexter-api/src/routes/linking.ts` and `identity.ts` – REST endpoints the UI relies on.
-- `alpha/dexter-fe/app/link/page.tsx` – frontend linking UI.
-
-## TL;DR for Superfixer
-- Connectors **authenticate**, but when they call account-linking tools they never deliver the OAuth identity to the handler, so the tools bail with `no_oauth_identity`.
-- Need to determine why the subject is lost between session init (where we have it) and tool invocation; most likely a mismatch with connector expectations (`userinfo`/claims or header names).
-- Fix identity propagation so `generate_dexter_linking_code` reaches the DB, then verify the rest of the linking flow.
+## TL;DR for the “Superfixer”
+- OAuth tokens are being minted, but the MCP server rejects them on subsequent tool calls (`HTTP 401 Invalid token or user not authorized`).
+- Until `validateTokenAndClaims` accepts the self-issued token and the tool handler actually runs, connectors will keep failing.
+- Focus on debugging why access tokens are not recognized immediately after issuance (header propagation, token storage, `/userinfo` claim set, restarts).
