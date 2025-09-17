@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "mcp": "node mcp/server.mjs",
-    "mcp:http": "node mcp/http-server.mjs",
+    
     "mcp:http:oauth": "node mcp/http-server-oauth.mjs",
     "test:mcp": "node scripts/test-mcp-all.mjs",
     "test:mcp:http": "node scripts/test-mcp-http.mjs",

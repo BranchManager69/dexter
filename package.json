@@ -19,7 +19,7 @@
     "ui:restart": "sudo systemctl restart dexter-ui",
     "mcp:restart": "sudo systemctl restart dexter-mcp",
     "mcp": "node alpha/dexter-mcp/server.mjs",
-    "mcp:http": "node alpha/dexter-mcp/http-server.mjs",
+    "mcp:http": "node alpha/dexter-mcp/http-server-oauth.mjs",
     "mcp:http:oauth": "node alpha/dexter-mcp/http-server-oauth.mjs",
     "status": "node token-ai/scripts/status.mjs",
     "ops:ui:status": "systemctl status dexter-ui --no-pager",

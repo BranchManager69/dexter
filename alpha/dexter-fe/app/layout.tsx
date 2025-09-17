@@ -9,6 +9,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/voice" style={{color:'#e6edf3'}}>Voice</a>
             <a href="/chat" style={{color:'#e6edf3'}}>Chat</a>
             <a href="/tools" style={{color:'#e6edf3'}}>Tools</a>
+            <a href="/link" style={{color:'#e6edf3'}}>Link</a>
           </nav>
         </header>
         <main style={{padding:16}}>{children}</main>

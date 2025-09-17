@@ -92,6 +92,13 @@ app.get('/live', (req,res)=>{
 app.get('/dashboard', (req,res)=>{
   res.redirect(301, '/agent-dashboard.html');
 });
+app.get('/link', (req,res)=>{
+  try {
+    res.sendFile(path.join(PUB_DIR, 'link.html'));
+  } catch (err) {
+    try { res.status(500).send('link page unavailable'); } catch {}
+  }
+});
 
 const server = http.createServer(app);
 

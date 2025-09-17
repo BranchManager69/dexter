@@ -15,7 +15,6 @@ touch -m "$ROOT/alpha/dexter-mcp" || true
 touch -m "$ROOT/alpha/dexter-mcp/tools" || true
 touch -m "$ROOT/alpha/dexter-mcp/common.mjs" || true
 touch -m "$ROOT/alpha/dexter-mcp/http-server-oauth.mjs" || true
-touch -m "$ROOT/alpha/dexter-mcp/http-server.mjs" || true
 touch -m "$ROOT/token-ai/server" || true
 touch -m "$ROOT/token-ai/core" || true
 touch -m "$ROOT/token-ai/server.js" || true
@@ -31,7 +30,6 @@ touch -m "$ROOT/alpha/dexter-mcp" || true
 touch -m "$ROOT/alpha/dexter-mcp/tools" || true
 touch -m "$ROOT/alpha/dexter-mcp/common.mjs" || true
 touch -m "$ROOT/alpha/dexter-mcp/http-server-oauth.mjs" || true
-touch -m "$ROOT/alpha/dexter-mcp/http-server.mjs" || true
 touch -m "$ROOT/token-ai/server" || true
 touch -m "$ROOT/token-ai/core" || true
 touch -m "$ROOT/token-ai/server.js" || true
@@ -47,7 +45,6 @@ touch -m "$ROOT/alpha/dexter-mcp" || true
 touch -m "$ROOT/alpha/dexter-mcp/tools" || true
 touch -m "$ROOT/alpha/dexter-mcp/common.mjs" || true
 touch -m "$ROOT/alpha/dexter-mcp/http-server-oauth.mjs" || true
-touch -m "$ROOT/alpha/dexter-mcp/http-server.mjs" || true
 touch -m "$ROOT/token-ai/server" || true
 touch -m "$ROOT/token-ai/core" || true
 touch -m "$ROOT/token-ai/server.js" || true
