@@ -1,19 +1,32 @@
-// PM2 ecosystem for Dexter alpha (API + FE + MCP). Run from repo root:
-// pm2 start alpha/ecosystem.config.cjs --only dexter-api,dexter-fe,dexter-mcp
-// pm2 save
+// ecosystem.config.cjs for the new Dexter suite (API + FE + MCP)
+
+// PM2 ecosystem for the new Dexter suite (API + FE + MCP).
+// Run from repo root:
+//   pm2 start ecosystem.config.cjs --only dexter-api,dexter-fe,dexter-mcp
+//   pm2 save
 
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+// Load env from repo root (Dexter), legacy token-ai/.env, and local MCP overrides
+// TODO: Simplify this
+//         Not sure the best way, but we should *not* rely on the parent directory's .env!
+//         I would sooner have each of the 3 apps load its own .env file before loading .env from the parent directory
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') }); // Bad!
 require('dotenv').config({ path: path.join(__dirname, 'dexter-api', '.env') });
 require('dotenv').config({ path: path.join(__dirname, 'dexter-mcp', '.env') });
+// why is there no .env in alpha or ANY of the three apps WTF!?
 
+// Log directory
 const LOG_DIR = path.join(__dirname, '..', 'logs');
-const FE_PORT = Number(process.env.DEXTER_FE_PORT) || 43017;
+
+// Ports
 const API_PORT = Number(process.env.DEXTER_API_PORT || process.env.PORT) || 3030;
+const FE_PORT = Number(process.env.DEXTER_FE_PORT) || 43017;
 const MCP_PORT = Number(process.env.TOKEN_AI_MCP_PORT) || 3930;
 
 module.exports = {
   apps: [
+    
+    // Backend API (Express + TypeScript)
     {
       name: 'dexter-api',
       cwd: path.join(__dirname, 'dexter-api'),
@@ -35,6 +48,8 @@ module.exports = {
       restart_delay: 2000,
       max_restarts: 10,
     },
+    
+    // Frontend (Next.js + TypeScript)
     {
       name: 'dexter-fe',
       cwd: path.join(__dirname, 'dexter-fe'),
@@ -53,6 +68,8 @@ module.exports = {
       restart_delay: 2000,
       max_restarts: 10,
     },
+
+    // MCP (Streamable HTTP + OAuth) (Node ESM)
     {
       name: 'dexter-mcp',
       cwd: path.join(__dirname, 'dexter-mcp'),
@@ -71,5 +88,6 @@ module.exports = {
       restart_delay: 2000,
       max_restarts: 10,
     },
+
   ],
 };

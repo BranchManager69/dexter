@@ -1,17 +1,18 @@
+// app/link/page.tsx
+
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Session, SupabaseClient } from '@supabase/supabase-js';
-import { createClient } from '@supabase/supabase-js';
+import { useAuth } from '../auth-context';
 
 const CODE_LENGTH = 6;
 const VALID_CODE = /^[A-HJ-NP-Z2-9]$/i;
 
-const rawApiOrigin = process.env.NEXT_PUBLIC_API_ORIGIN || '';
-const apiOrigin = (rawApiOrigin === 'relative' ? '' : rawApiOrigin).replace(/\/$/, '');
+const rawApiOrigin = process.env.NEXT_PUBLIC_API_ORIGIN ?? '';
+const API_ORIGIN = (rawApiOrigin === 'relative' ? '' : rawApiOrigin).replace(/\/$/, '');
 
 function apiUrl(path: string) {
-  if (apiOrigin) return `${apiOrigin}${path}`;
+  if (API_ORIGIN) return `${API_ORIGIN}${path}`;
   if (typeof window !== 'undefined') return `${window.location.origin}${path}`;
   return path;
 }
@@ -30,66 +31,30 @@ type LinkStatusResponse = {
 };
 
 export default function LinkPage() {
-  const [supabase, setSupabase] = useState<SupabaseClient | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [configState, setConfigState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [configError, setConfigError] = useState<string>('');
+  const { session, loading: authLoading, error: authError } = useAuth();
   const [statusLoading, setStatusLoading] = useState<boolean>(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [status, setStatus] = useState<LinkStatusResponse | null>(null);
   const [codeBoxes, setCodeBoxes] = useState<string[]>(Array.from({ length: CODE_LENGTH }, () => ''));
   const [linkMessage, setLinkMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [linkBusy, setLinkBusy] = useState<boolean>(false);
-  const [email, setEmail] = useState<string>('');
-  const [authMsg, setAuthMsg] = useState<string>('');
-  const [magicLinkBusy, setMagicLinkBusy] = useState<boolean>(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [resolvedApiOrigin, setResolvedApiOrigin] = useState<string>(API_ORIGIN || '');
 
-  useEffect(() => {
-    let cancelled = false;
-    let unsubscribe: (() => void) | undefined;
-
-    async function bootstrap() {
-      setConfigState('loading');
-      setConfigError('');
-      try {
-        const response = await fetch(apiUrl('/auth/config'), { cache: 'no-store' });
-        const data = await response.json().catch(() => null);
-        if (!response.ok || !data?.ok || !data.supabaseUrl || !data.supabaseAnonKey) {
-          throw new Error('Supabase configuration missing.');
-        }
-        if (cancelled) return;
-        const client = createClient(data.supabaseUrl, data.supabaseAnonKey, {
-          auth: { persistSession: true, autoRefreshToken: true },
-        });
-        const { data: initial } = await client.auth.getSession();
-        if (cancelled) return;
-        setSession(initial?.session ?? null);
-        const { data: listener } = client.auth.onAuthStateChange((_event, newSession) => {
-          setSession(newSession ?? null);
-        });
-        unsubscribe = () => listener?.subscription?.unsubscribe?.();
-        setSupabase(client);
-        setConfigState('ready');
-      } catch (err: any) {
-        if (!cancelled) {
-          setConfigState('error');
-          setConfigError(err?.message || 'Unable to load authentication config.');
-        }
-      }
-    }
-
-    bootstrap();
-
-    return () => {
-      cancelled = true;
-      unsubscribe?.();
-    };
-  }, []);
 
   const accessToken = session?.access_token || null;
 
   const codeValue = useMemo(() => codeBoxes.join('').trim(), [codeBoxes]);
+
+  useEffect(() => {
+    if (!API_ORIGIN && typeof window !== 'undefined') {
+      setResolvedApiOrigin(window.location.origin);
+    }
+    if (typeof window !== 'undefined') {
+      const origin = API_ORIGIN || window.location.origin;
+      console.info('[link-page] using API origin', origin);
+    }
+  }, []);
 
   async function authFetch(path: string, init?: RequestInit) {
     if (!accessToken) throw new Error('No active session');
@@ -98,7 +63,11 @@ export default function LinkPage() {
       headers.set('Authorization', `Bearer ${accessToken}`);
     }
     headers.set('Content-Type', 'application/json');
-    const response = await fetch(apiUrl(path), {
+    const target = API_ORIGIN ? `${API_ORIGIN}${path}` : (typeof window !== 'undefined' ? `${window.location.origin}${path}` : path);
+    if (typeof window !== 'undefined') {
+      console.info('[link-page] authFetch', target);
+    }
+    const response = await fetch(target, {
       ...init,
       credentials: init?.credentials ?? 'include',
       headers,
@@ -114,10 +83,16 @@ export default function LinkPage() {
       const response = await authFetch('/api/link/status');
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
+        if (typeof window !== 'undefined') {
+          console.error('[link-page] status request failed', response.status, payload);
+        }
         throw new Error(payload?.error || `Request failed (${response.status})`);
       }
       setStatus(payload as LinkStatusResponse);
     } catch (err: any) {
+      if (typeof window !== 'undefined') {
+        console.error('[link-page] status request error', err);
+      }
       setStatus(null);
       setStatusError(err?.message || 'Unable to load link status.');
     } finally {
@@ -261,88 +236,138 @@ export default function LinkPage() {
     }
   };
 
-  const handleSendMagicLink = async () => {
-    if (!supabase) return;
-    const trimmed = email.trim();
-    if (!trimmed) {
-      setAuthMsg('Enter your email.');
-      return;
-    }
-    setMagicLinkBusy(true);
-    setAuthMsg('Sending magic link…');
-    try {
-      const redirectTo = typeof window !== 'undefined' ? window.location.href : undefined;
-      const { error } = await supabase.auth.signInWithOtp({
-        email: trimmed,
-        options: { emailRedirectTo: redirectTo, shouldCreateUser: true },
-      });
-      if (error) throw error;
-      setAuthMsg('Check your email for the sign-in link.');
-    } catch (err: any) {
-      setAuthMsg(err?.message || 'Unable to send magic link.');
-    } finally {
-      setMagicLinkBusy(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    setLinkMessage(null);
-    setStatus(null);
-  };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 16px' }}>
-      <div style={{ width: '100%', maxWidth: 520, background: '#0f1119', border: '1px solid #1d2230', borderRadius: 16, padding: 28, boxShadow: '0 18px 40px rgba(0,0,0,0.35)' }}>
-        <h1 style={{ fontSize: 28, margin: 0, marginBottom: 12 }}>Link Your Dexter Account</h1>
-        <p style={{ color: '#9fb2c8', marginBottom: 24 }}>
-          Connect your web account to MCP (Claude, ChatGPT, etc.) using the 6-character code generated inside the connector.
+    <div style={{ minHeight: 'calc(100vh - 60px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 24px', background: 'linear-gradient(135deg, #0b0c10 0%, #1a1d29 50%, #0b0c10 100%)' }}>
+      <style jsx global>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 1; }
+        }
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        @keyframes successCheck {
+          from {
+            stroke-dashoffset: 100;
+          }
+          to {
+            stroke-dashoffset: 0;
+          }
+        }
+        @keyframes glow {
+          0%, 100% { box-shadow: 0 0 20px rgba(102, 126, 234, 0.3); }
+          50% { box-shadow: 0 0 40px rgba(102, 126, 234, 0.6); }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        .magic-sending {
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+        .slide-up {
+          animation: slideUp 0.5s ease-out;
+        }
+        .glow-effect {
+          animation: glow 2s ease-in-out infinite;
+        }
+      `}</style>
+      <div style={{ width: '100%', maxWidth: 680, position: 'relative' }}>
+        <div style={{
+          position: 'absolute',
+          top: -40,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 120,
+          height: 120,
+          background: 'linear-gradient(135deg, #667eea, #764ba2)',
+          borderRadius: '50%',
+          opacity: 0.1,
+          filter: 'blur(40px)'
+        }} />
+        <h1 style={{
+          fontSize: 42,
+          margin: 0,
+          marginBottom: 16,
+          textAlign: 'center',
+          background: 'linear-gradient(135deg, #667eea, #764ba2)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          letterSpacing: '-0.5px'
+        }}>Link Your Dexter Account</h1>
+        <p style={{ color: '#9fb2c8', marginBottom: 48, textAlign: 'center', fontSize: 18, lineHeight: 1.6 }}>
+          Connect your web account to MCP (Claude, ChatGPT, etc.)
         </p>
+        <div style={{ color: '#607499', textAlign: 'center', fontSize: 12, marginBottom: 32 }}>
+          API endpoint: {resolvedApiOrigin || '(relative)'}
+        </div>
 
-        {configState === 'loading' && (
-          <div style={{ color: '#9fb2c8' }}>Loading authentication…</div>
+        {authLoading && (
+          <div style={{ color: '#9fb2c8', textAlign: 'center', padding: 40 }}>Loading authentication…</div>
         )}
-        {configState === 'error' && (
-          <div style={{ background: '#2b0e0e', border: '1px solid #5a2323', color: '#ff9f9f', padding: 12, borderRadius: 8, marginBottom: 12 }}>
-            {configError}
+        {authError && (
+          <div style={{ background: '#2b0e0e', border: '1px solid #5a2323', color: '#ff9f9f', padding: 16, borderRadius: 12, marginBottom: 24, textAlign: 'center' }}>
+            {authError}
           </div>
         )}
 
-        {configState === 'ready' && (
+        {!authLoading && !authError && (
           <>
-            <section style={{ marginBottom: 28 }}>
-              <h2 style={{ fontSize: 18, marginBottom: 12 }}>1. Sign in</h2>
-              {session ? (
-                <div style={{ background: '#101523', border: '1px solid #1d2740', borderRadius: 8, padding: 16, display: 'grid', gap: 12 }}>
-                  <div style={{ color: '#9fb2c8' }}>Signed in as <strong>{session.user?.email || session.user?.id}</strong></div>
-                  <button onClick={handleSignOut} style={buttonStyle}>Sign out</button>
+            {!session && (
+              <section style={{ marginBottom: 48, background: 'rgba(17, 21, 35, 0.4)', backdropFilter: 'blur(10px)', borderRadius: 20, padding: 32, border: '1px solid rgba(102, 126, 234, 0.1)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                  <div style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: '50%',
+                    background: 'rgba(102, 126, 234, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 18,
+                    fontWeight: 'bold'
+                  }}>✓</div>
+                  <h2 style={{ fontSize: 22, margin: 0 }}>Sign in required</h2>
                 </div>
-              ) : (
-                <div style={{ background: '#101523', border: '1px solid #1d2740', borderRadius: 8, padding: 16, display: 'grid', gap: 12 }}>
-                  <label style={{ fontSize: 13, color: '#9fb2c8' }}>Send a magic link to your email</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="you@example.com"
-                    style={inputStyle}
-                    autoComplete="email"
-                  />
-                  <button onClick={handleSendMagicLink} disabled={magicLinkBusy} style={buttonStyle}>
-                    {magicLinkBusy ? 'Sending…' : 'Send magic link'}
-                  </button>
-                  {authMsg && <div style={{ fontSize: 12, color: '#9fb2c8' }}>{authMsg}</div>}
-                </div>
-              )}
-            </section>
+                <p style={{ color: '#9fb2c8', lineHeight: 1.6 }}>
+                  Please sign in using the button in the top right corner to link your Dexter account with MCP.
+                </p>
+              </section>
+            )}
 
-            <section style={{ marginBottom: 28 }}>
-              <h2 style={{ fontSize: 18, marginBottom: 12 }}>2. Enter the code from MCP</h2>
-              <p style={{ color: '#9fb2c8', marginBottom: 16 }}>
-                In Claude or ChatGPT, run <code>generate_dexter_linking_code</code>. Paste the code below.
+            <section style={{ marginBottom: 48, background: 'rgba(17, 21, 35, 0.4)', backdropFilter: 'blur(10px)', borderRadius: 20, padding: 32, border: '1px solid rgba(102, 126, 234, 0.1)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                <div style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  background: session ? 'linear-gradient(135deg, #667eea, #764ba2)' : 'rgba(102, 126, 234, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 18,
+                  fontWeight: 'bold',
+                  transition: 'all 0.3s'
+                }}>1</div>
+                <h2 style={{ fontSize: 22, margin: 0 }}>Enter linking code</h2>
+              </div>
+              <p style={{ color: '#9fb2c8', marginBottom: 24, lineHeight: 1.6 }}>
+                In Claude or ChatGPT, run <code style={{
+                  background: 'rgba(102, 126, 234, 0.1)',
+                  padding: '4px 8px',
+                  borderRadius: 6,
+                  border: '1px solid rgba(102, 126, 234, 0.2)',
+                  fontSize: 14
+                }}>generate_dexter_linking_code</code> and paste the code below.
               </p>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 16 }}>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 24 }}>
                 {codeBoxes.map((value, index) => (
                   <input
                     key={index}
@@ -352,16 +377,51 @@ export default function LinkPage() {
                     onKeyDown={(event) => handleKeyDown(index, event)}
                     onPaste={handlePaste}
                     maxLength={1}
+                    className={value ? 'glow-effect' : ''}
                     style={codeInputStyle(value)}
+                    disabled={!session}
                   />
                 ))}
               </div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button onClick={handleVerify} disabled={!session || linkBusy} style={{ ...buttonStyle, flex: '1 1 auto' }}>
-                  {linkBusy ? 'Working…' : 'Link account'}
+              <div style={{ display: 'grid', gap: 12 }}>
+                <button
+                  onClick={handleVerify}
+                  disabled={!session || linkBusy || codeValue.length !== CODE_LENGTH}
+                  style={{
+                    ...buttonStyle,
+                    padding: '14px 20px',
+                    fontSize: 16,
+                    opacity: (!session || codeValue.length !== CODE_LENGTH) ? 0.5 : 1,
+                    cursor: (!session || codeValue.length !== CODE_LENGTH) ? 'not-allowed' : 'pointer'
+                  }}>
+                  {linkBusy ? (
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ animation: 'spin 1s linear infinite' }}>
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray="60" strokeDashoffset="15" />
+                      </svg>
+                      Linking account...
+                    </span>
+                  ) : 'Link account'}
                 </button>
-                <button onClick={handleGenerateCode} disabled={!session || linkBusy} style={{ ...secondaryButtonStyle, flex: '0 0 auto' }}>
-                  Generate code here
+                <div style={{ textAlign: 'center', color: '#9fb2c8', fontSize: 14 }}>— or —</div>
+                <button
+                  onClick={handleGenerateCode}
+                  disabled={!session || linkBusy}
+                  style={{
+                    ...secondaryButtonStyle,
+                    padding: '12px 20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    opacity: !session ? 0.5 : 1,
+                    cursor: !session ? 'not-allowed' : 'pointer'
+                  }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2L2 7V12C2 16.55 4.84 20.74 9 22C13.16 20.74 16 16.55 16 12V7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M9 12L11 14L15 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Generate code here instead
                 </button>
               </div>
               {linkMessage && (
@@ -380,8 +440,22 @@ export default function LinkPage() {
               )}
             </section>
 
-            <section>
-              <h2 style={{ fontSize: 18, marginBottom: 12 }}>3. Review linked accounts</h2>
+            <section style={{ background: 'rgba(17, 21, 35, 0.4)', backdropFilter: 'blur(10px)', borderRadius: 20, padding: 32, border: '1px solid rgba(102, 126, 234, 0.1)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                <div style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  background: (session && status?.links?.length) ? 'linear-gradient(135deg, #667eea, #764ba2)' : 'rgba(102, 126, 234, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 18,
+                  fontWeight: 'bold',
+                  transition: 'all 0.3s'
+                }}>2</div>
+                <h2 style={{ fontSize: 22, margin: 0 }}>Linked accounts</h2>
+              </div>
               {statusLoading && <div style={{ color: '#9fb2c8' }}>Loading…</div>}
               {statusError && (
                 <div style={{ background: '#2b0e0e', border: '1px solid #5a2323', color: '#ff9f9f', padding: 12, borderRadius: 8, marginBottom: 12 }}>
@@ -389,28 +463,96 @@ export default function LinkPage() {
                 </div>
               )}
               {!statusLoading && status && status.links.length === 0 && (
-                <div style={{ color: '#9fb2c8' }}>No MCP accounts linked yet.</div>
+                <div style={{ color: '#9fb2c8', textAlign: 'center', padding: '20px 0' }}>No MCP accounts linked yet.</div>
               )}
               {status && status.links.length > 0 && (
-                <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ display: 'grid', gap: 16 }}>
                   {status.links.map((link) => (
-                    <div key={`${link.provider}:${link.subject || 'unknown'}`} style={{ background: '#101523', border: '1px solid #1d2740', borderRadius: 8, padding: 14, display: 'grid', gap: 6 }}>
-                      <div style={{ fontWeight: 600 }}>{link.provider}</div>
-                      <div style={{ color: '#9fb2c8', fontSize: 12 }}>Linked {new Date(link.linked_at).toLocaleString()}</div>
-                      {link.subject && <div style={{ color: '#9fb2c8', fontSize: 12 }}>Subject: {link.subject}</div>}
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => handleUnlink(link.provider, link.subject || undefined)} style={secondaryButtonStyle}>
-                          Unlink this provider
-                        </button>
+                    <div
+                      key={`${link.provider}:${link.subject || 'unknown'}`}
+                      className="slide-up"
+                      style={{
+                        background: 'rgba(16, 21, 35, 0.6)',
+                        borderRadius: 12,
+                        padding: 20,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        border: '1px solid rgba(102, 126, 234, 0.1)',
+                        transition: 'all 0.3s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.border = '1px solid rgba(102, 126, 234, 0.3)'}
+                      onMouseLeave={(e) => e.currentTarget.style.border = '1px solid rgba(102, 126, 234, 0.1)'}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                        <div style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 12,
+                          background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2))',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" stroke="#667eea" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 4 }}>{link.provider}</div>
+                          <div style={{ color: '#9fb2c8', fontSize: 13 }}>Linked {new Date(link.linked_at).toLocaleString()}</div>
+                          {link.subject && <div style={{ color: '#9fb2c8', fontSize: 12, marginTop: 2 }}>ID: {link.subject}</div>}
+                        </div>
                       </div>
+                      <button
+                        onClick={() => handleUnlink(link.provider, link.subject || undefined)}
+                        style={{
+                          ...secondaryButtonStyle,
+                          padding: '8px 16px',
+                          fontSize: 14,
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          background: 'rgba(239, 68, 68, 0.1)',
+                          color: '#ef4444'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+                      >
+                        Unlink
+                      </button>
                     </div>
                   ))}
-                  <button onClick={() => handleUnlink()} style={secondaryButtonStyle}>Unlink all</button>
+                  {status.links.length > 1 && (
+                    <button
+                      onClick={() => handleUnlink()}
+                      style={{
+                        ...secondaryButtonStyle,
+                        marginTop: 8,
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        background: 'rgba(239, 68, 68, 0.05)',
+                        color: '#ef4444'
+                      }}
+                    >
+                      Unlink all accounts
+                    </button>
+                  )}
                 </div>
               )}
-              <div style={{ marginTop: 14 }}>
-                <button onClick={refreshStatus} disabled={!session} style={tertiaryButtonStyle}>
-                  Refresh status
+              <div style={{ marginTop: 20, textAlign: 'center' }}>
+                <button
+                  onClick={refreshStatus}
+                  disabled={!session}
+                  style={{
+                    ...tertiaryButtonStyle,
+                    opacity: !session ? 0.5 : 1,
+                    cursor: !session ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path d="M1 4V10H1M1 10H7M1 10L5.64 5.64C6.71 4.57 8.03 3.78 9.5 3.37C10.97 2.96 12.53 2.94 14.01 3.31C15.49 3.68 16.84 4.43 17.93 5.48C19.02 6.53 19.82 7.85 20.26 9.32M23 20V14H23M23 14H17M23 14L18.36 18.36C17.29 19.43 15.97 20.22 14.5 20.63C13.03 21.04 11.47 21.06 9.99 20.69C8.51 20.32 7.16 19.57 6.07 18.52C4.98 17.47 4.18 16.15 3.74 14.68" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    Refresh status
+                  </span>
                 </button>
               </div>
             </section>
@@ -460,15 +602,17 @@ const tertiaryButtonStyle: React.CSSProperties = {
 
 function codeInputStyle(value: string): React.CSSProperties {
   return {
-    width: 52,
-    height: 64,
+    width: 56,
+    height: 68,
     textAlign: 'center',
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 700,
-    borderRadius: 12,
-    border: '2px solid ' + (value ? '#667eea' : '#1d2740'),
-    background: value ? '#121c33' : '#0b0f18',
-    color: '#e6edf3',
+    borderRadius: 16,
+    border: '2px solid ' + (value ? '#667eea' : 'rgba(102, 126, 234, 0.2)'),
+    background: value ? 'rgba(102, 126, 234, 0.1)' : 'rgba(11, 15, 24, 0.6)',
+    color: value ? '#667eea' : '#e6edf3',
     textTransform: 'uppercase',
+    transition: 'all 0.3s',
+    cursor: 'text',
   };
 }
