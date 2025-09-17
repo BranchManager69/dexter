@@ -15,8 +15,6 @@ import { registerRealtimeRoutes } from './server/routes/realtime.js';
 import { registerMcpProxyRoutes } from './server/routes/mcpProxy.js';
 import { registerIdentityMiddleware, registerAuthRoutes } from './server/routes/auth.js';
 import { registerWalletRoutes } from './server/routes/wallets.js';
-import { registerLinkingRoutes } from './server/routes/linking.js';
-import { registerIdentityRoutes } from './server/routes/identity.js';
 import { RUN_LIMIT, LOGS_PER_RUN_LIMIT, CHILD_MAX_MB, activeRuns, childProcs, spawnAnalyzer, setRunLogListener, setRunExitListener, getRunLogs, killRun } from './core/run-manager.js';
 
 // In-memory cache for lightweight endpoints
@@ -91,13 +89,6 @@ app.get('/live', (req,res)=>{
 });
 app.get('/dashboard', (req,res)=>{
   res.redirect(301, '/agent-dashboard.html');
-});
-app.get('/link', (req,res)=>{
-  try {
-    res.sendFile(path.join(PUB_DIR, 'link.html'));
-  } catch (err) {
-    try { res.status(500).send('link page unavailable'); } catch {}
-  }
 });
 
 const server = http.createServer(app);
@@ -190,8 +181,6 @@ registerAuthRoutes(app);
 registerRealtimeRoutes(app, { port: PORT, tokenAiDir: TOKEN_AI_DIR });
 registerMcpProxyRoutes(app);
 registerWalletRoutes(app);
-registerLinkingRoutes(app);
-registerIdentityRoutes(app);
 app.post('/events', (req,res) => {
   try {
     // Allow only local agent by default

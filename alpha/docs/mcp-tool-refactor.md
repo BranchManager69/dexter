@@ -21,7 +21,6 @@
 | wallet-aliases.mjs | User-defined wallet aliases | Prisma (`ai_user_tokens`, `ai_wallet_aliases`, `managed_wallets`) | Token issuance + schema not confirmed | Confirm schema, reapply with new resolver |
 | wallet-extra.mjs | Fetch wallet analysis via API | API endpoint `/api/wallet-analysis` | Endpoint missing in new API | Replace with slimmer balance/metrics call |
 | trading.mjs | Execute trades & list balances | Solana RPC, Jupiter client, Prisma managed wallets | Depends on removed traders + secrets | Redesign trading flow after resolver exists |
-| account-linking.mjs | Legacy link-code tool | Prisma (`account_links`, `linking_codes`) | Obsolete once OAuth flow lands | Remove module |
 
 ### Wallet/Auth Rebuild Outline
 - MCP wallet tools now rely on `/api/wallets/resolver`; legacy wallet link/generate flows removed until API replacements exist.
@@ -36,7 +35,7 @@
 - `oauth_user_wallets`: maps OAuth provider + subject to a `wallet_id` and optional `supabase_user_id`. Supports multiple wallets per identity via `default_wallet` flag.
 - `ai_app_users` / `ai_user_tokens` / `ai_user_settings`: legacy user directory and per-user default wallet pointers. Today the canonical identity should be Supabase; we can deprecate tokens once connector OAuth returns Supabase IDs.
 - `ai_wallet_aliases`: per-user nickname table for wallets. With `managed_wallets.label` available, we can migrate aliases into wallet metadata and remove this table.
-- `account_links` & `linking_codes`: support the deprecated link-code flow. Safe to drop once the new OAuth pipeline is live.
+- `account_links` & `linking_codes`: former link-code tables. **Dropped Feb 2025**; keep archives only if needed for audits.
 - `ai_trade_audit`: append-only ledger of wallet actions; keep for compliance, but ensure it records Supabase user IDs instead of legacy tokens.
 
 
@@ -48,13 +47,16 @@
 - Capture required secrets (`SOLANA_RPC_ENDPOINT`, Jupiter API key, wallet key storage) and how they are provisioned per environment.
 
 ### Connector OAuth Rollout Plan
+- `/api/connector/oauth/authorize` now redirects to `/connector/auth`, a Supabase-backed login page that exchanges the session for an OAuth code.
+- Authorization codes are short-lived and exchanged server-side via Supabase service-role key; refresh grant reuses the same endpoint.
+- Legacy `/api/link/*` endpoints have now been removed; connectors must use the Supabase OAuth flow exclusively. `/api/identity/*` stays temporarily for backward-compatible lookups until dependent callers migrate.
 - MCP `wallet-auth.mjs` will drop Prisma usage and call `/api/wallets/resolver` using the Supabase bearer, enforcing per-user scoping.
 - Token endpoint issues Supabase-backed access tokens (via refresh grant). Session hashing logged; persistence pending `connector_sessions` migration.
 - Implement `GET /api/connector/oauth/authorize` and `POST /api/connector/oauth/token` in dexter-api.
 - Use Supabase service-role key to mint long-lived JWTs (1yr+) and store hashed tokens in `connector_sessions`.
 - Update ChatGPT/Claude connector configs to point to the new authorize/token endpoints (scopes: `wallet.read wallet.trade`).
-- MCP server validates Supabase JWT via `SUPABASE_JWT_SECRET`; remove link-code CLI/tooling.
-- After rollout, drop Prisma models: `account_links`, `linking_codes`, `ai_user_tokens`, and migrate any alias data into `managed_wallets.label`.
+- MCP server validates Supabase JWT via `SUPABASE_JWT_SECRET`; link-code tooling removed.
+- After rollout, drop Prisma models: ~~`account_links`, `linking_codes`~~ (done), `ai_user_tokens`, and migrate any alias data into `managed_wallets.label`.
 
 ### Research Tooling Baseline
 - Keep a single search/fetch surface (`web_search`, `smart_fetch`) with Tavily plus Readability/Playwright fallback.
@@ -67,7 +69,6 @@
 
 | Tool | Purpose | Dependencies (runtime & data) | Current Issues | Recommendation | Status |
 |------|---------|-------------------------------|----------------|----------------|--------|
-| account-linking.mjs | (Legacy) link-code helpers | Prisma (`account_links`, `linking_codes`), MCP headers | Superseded by direct OAuth tokens | Remove and replace with simple auth-status endpoint | Planned removal |
 | agent-run.mjs | Spawn token analyzer and socials processes | `token-ai/core/run-manager.js`, legacy analyzer CLIs, research webhooks | Core dependencies removed; would crash immediately | Drop for now – rebuild only if a new analyzer exists | Untriaged |
 | dexscreener.mjs | Query DexScreener for token/pair metadata | axios, DexScreener HTTP API | Mostly intact; references legacy user agent string | Keep – minor polish (UA/env) | Untriaged |
 | foundation.mjs | Wrap token activation/enrichment helpers | `token-ai/socials/tools/foundation.js` | Module missing after repo split | Replace with new data service or remove | Untriaged |
@@ -80,13 +81,13 @@
 | trading.mjs | Wallet management & Jupiter trading | `token-ai/trade-manager/*`, Prisma managed wallets, Solana RPC | Heavy dependencies gone; security sensitive | Drop – rebuild only with new wallet stack | Untriaged |
 | voice-debug.mjs | Inspect realtime voice debug endpoints | Legacy UI server on `TOKEN_AI_UI_PORT` | UI endpoints removed in split | Drop unless new voice UI emerges | Untriaged |
 | wallet-aliases.mjs | Manage per-user wallet aliases | Prisma (`ai_user_tokens`, `ai_wallet_aliases`, `managed_wallets`) | Requires DB + token issuance not yet defined | Rebuild if alias feature is still wanted | Untriaged |
-| wallet-auth.mjs | Resolve wallet IDs from bearer/OAuth context | Prisma, `../../server/utils/jwt.js` (missing), env maps | Imports dead path; logic tied to old stack | Rebuild minimal wallet/auth helper | Untriaged |
+| wallet-auth.mjs | Resolve wallet IDs from Supabase bearer tokens | `/api/wallets/resolver`, Supabase JWT | Rewritten to remove Prisma/link-code dependencies | Done |
 | wallet-extra.mjs | Fetch wallet analysis from API server | node-fetch, `/api/wallet-analysis` endpoint | Endpoint not present in new API | Drop | Untriaged |
 | web-research.mjs | Web search/fetch/crawl plus job helpers | Tavily API, node-fetch, Playwright, `token-ai/core/run-manager.js`, report dirs | Uses missing run manager & report paths; heavy deps | Rebuild core research toolkit (search/fetch) | Untriaged |
 | websites.mjs | Website extraction + official link discovery | `token-ai/socials/tools/websites.js` & foundation helpers | Relies on missing legacy modules | Fold into rebuilt research pipeline or drop | Untriaged |
 
 ## v1 Tool Bundle
-- **Must ship:** Account linking + wallet resolution (`account-linking`, `wallet-auth`, `wallet-aliases`), trading primitives, DexScreener metrics, OHLCV/Birdeye coverage, and a single best-in-class research fetch/search tool.
+- **Must ship:** Supabase-backed wallet resolution (`wallet-auth`, `wallet-aliases` cleanup), trading primitives, DexScreener metrics, OHLCV/Birdeye coverage, and a single best-in-class research fetch/search tool.
 - **Optional / follow-up:** Playwright crawling extras, report browsing, prediction history, and voice/UX debug tooling.
 
 ## Immediate Work Items
@@ -95,7 +96,7 @@
 | Inventory Prisma schema vs. new API needs | Backend | Completed | — | Snapshot captured in plan (`managed_wallets`, `oauth_user_wallets`, alias/link tables) |
 | Draft OAuth-for-connector flow (Dexter auth endpoint + connector config) | Backend | Completed | — | `/api/connector/oauth/authorize` + `/api/connector/oauth/token` scaffolded (refresh_token grant) |
 | Draft wallet resolver API contract | Backend | Completed | — | `/api/wallets/resolver` implemented (view/trade permissions scaffolded) |
-| MCP wallet-auth rewrite to call resolver | MCP | Not started | Resolver contract | Replace legacy imports, cache per Supabase user |
+| MCP wallet-auth rewrite to call resolver | MCP | Completed | — | Tools now call `/api/wallets/resolver`; session overrides respected |
 | Trading pathway design (quote + execute) | Backend/MCP | Not started | Resolver contract, key custody decision | Define permission and approval model |
 | Rebuild smart fetch tool with Tavily + fallback | MCP | Not started | Tavily key strategy | Merge old `web_search` variants into one |
 | DexScreener env config pass | MCP | In progress | None | Move UA/timeouts/env and add retries |
@@ -117,4 +118,3 @@
 - Link-code flow is retired; the connector must use the new OAuth endpoint.
 - Enforce wallet scoping (even for admins) inside the API to prevent prompt-based privilege escalation.
 - Avoid redundant basic vs smart tool variants—ship one definitive implementation per capability.
-

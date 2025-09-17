@@ -1,190 +1,60 @@
-# Dexter Account Linking System - Testing Guide
+# Dexter Account Linking System (Supabase OAuth)
 
-## Overview
-The account linking system allows MCP users (Claude/ChatGPT) to connect their OAuth identity with their Dexter website account.
+This guide documents the **current** connector authentication flow. The old six-character link-code workflow has been removed; MCP clients now authenticate purely through Supabase OAuth delivered by the Dexter MCP server.
 
-## Architecture
-- **MCP OAuth**: Handles Claude/ChatGPT authentication (existing system - DO NOT MODIFY)
-- **Supabase Auth**: Handles website authentication  
-- **Account Links**: Bridges the two systems via secure 6-character codes
+## 1. High-Level Flow
 
-## Testing the MCP Tools
+1. Claude/ChatGPT initiates OAuth with the Dexter MCP server.
+2. `/api/connector/oauth/authorize` responds with the Dexter login URL.
+3. The user signs in through the standard Supabase magic-link flow.
+4. The connector exchanges the Supabase refresh token at `/api/connector/oauth/token` and receives a bearer.
+5. Subsequent MCP calls send that bearer, which the API resolves to managed wallets via `/api/wallets/resolver`.
 
-### 1. From Claude Desktop or ChatGPT
-These tools are available in your MCP session:
+There are **no** linking codes, `/api/link/*` endpoints, or static `/link` UI involved anymore.
 
-```
-# Check if you have a linked account
-check_dexter_account_link
+## 2. Testing Checklist
 
-# Generate a linking code (if not linked)
-generate_dexter_linking_code
+### 2.1 OAuth Handshake
+- `npm run mcp:prod` (from repo root) to exercise the CLI smoke test.
+- Confirm logs in `~/.pm2/logs/dexter-mcp-out.log` show `token accepted` and a session identity with `issuer` and `sub`.
 
-# Get details about your linked account
-get_linked_dexter_account
+### 2.2 Wallet Resolution
+- Call the `auth_info` MCP tool; expect `source="resolver"` and a Supabase `user_id`.
+- `list_my_wallets` should return the wallets from `/api/wallets/resolver`.
 
-# Unlink your account (for testing)
-unlink_dexter_account confirm=true
-```
+### 2.3 Web Header Login
+- Visit any Next.js page and select **Sign in** in the header. A magic link should arrive; after confirmation the header shows the account email.
 
-### 2. Testing Flow
+## 3. Database Snapshot
 
-#### Step 1: Check Current Status
-```
-check_dexter_account_link
-```
-Expected: "No Dexter account linked"
+Only these tables remain involved in authentication:
+- `managed_wallets`
+- `oauth_user_wallets`
 
-#### Step 2: Generate Linking Code
-```
-generate_dexter_linking_code
-```
-Expected: Returns a 6-character code like "A3K9P2"
+Legacy tables `account_links` and `linking_codes` were dropped in February 2025. Historical data, if any, should be archived off-database before deploying the migration.
 
-#### Step 3: Complete Linking on Website
-1. Visit https://dexter.cash/link
-2. Log in with your Dexter account (if not already)
-3. Enter the 6-character code
-4. Click "Link Account"
+## 4. Deployment Notes
 
-#### Step 4: Verify Link
-```
-check_dexter_account_link
-```
-Expected: Shows linked account details
+1. Apply the Prisma migration `20250218_drop_account_link_tables` (see `prisma/migrations/`).
+2. Restart services via PM2:
+   ```bash
+   pm2 restart dexter-api dexter-fe dexter-mcp
+   pm2 save
+   ```
+3. Re-run `npm run mcp:prod` to confirm the OAuth flow is still healthy.
 
-#### Step 5: Test Unlinking (Optional)
-```
-unlink_dexter_account confirm=true
-```
-Expected: "Successfully unlinked Dexter account"
+## 5. Troubleshooting
 
-## Testing the Web UI
+| Symptom | Check |
+|---------|-------|
+| Connector says “Tool execution failed” immediately | Inspect MCP logs for bearer validation errors. Ensure `/api/connector/oauth/token` received a valid Supabase refresh token. |
+| `auth_info` reports `source="env"` | The connector bearer was missing or invalid; re-authenticate through the MCP authorize flow. |
+| Header sign-in modal spins forever | Verify `/auth/config` is reachable (Next.js rewrite to API origin) and Supabase env vars are present. |
+| Wallet tools show empty list | Confirm the Supabase user has entries in `oauth_user_wallets` after the connector signs in. |
 
-### Direct Browser Testing
-1. Navigate to https://dexter.cash/link
-2. The page will:
-   - Check authentication status
-   - Show existing linked accounts
-   - Allow entering a 6-character code
+## 6. Cleanup Reminders
 
-### Features to Test
-- **Auto-advance**: Type one character, cursor moves to next box
-- **Paste support**: Paste full 6-character code at once
-- **Validation**: Only accepts A-Z, 0-9 (no confusing characters)
-- **Error handling**: Invalid/expired codes show appropriate messages
+- The `token-ai/server.js` legacy server no longer exposes `/link`; the static HTML was removed.
+- Any scripts or docs referencing linking codes should be archived or updated. Search for `linking_code` or `/api/link/` to catch stragglers.
 
-## Testing API Endpoints
-
-### Using curl (from server)
-```bash
-# Check link status (requires auth token)
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:3000/api/link/status
-
-# Verify a code
-curl -X POST -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"code":"A3K9P2"}' \
-  http://localhost:3000/api/link/verify
-```
-
-### Direct Identity API (advanced)
-```bash
-# Resolve Supabase user id from an OAuth identity (service use)
-curl "http://localhost:3000/api/identity/resolve?provider=claude&subject=user-123"
-
-# Link current Supabase user to an OAuth identity (no code flow)
-curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" \
-  -d '{"provider":"claude","subject":"user-123"}' \
-  http://localhost:3000/api/identity/link
-
-# Unlink a specific identity
-curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" \
-  -d '{"provider":"claude","subject":"user-123"}' \
-  http://localhost:3000/api/identity/unlink
-```
-
-## Database Verification
-
-### Check linking_codes table
-```bash
-node -e "require('./config/prisma.js').default.linking_codes.findMany({ orderBy: { created_at: 'desc' }, take: 5 }).then(r => { console.log('=== Recent Linking Codes ==='); r.forEach(c => console.log(c.code + ' - ' + (c.used ? 'USED' : 'ACTIVE') + ' - Expires: ' + c.expires_at)); }).catch(console.error).finally(() => process.exit())"
-```
-
-### Check account_links table
-```bash
-node -e "require('./config/prisma.js').default.account_links.findMany({ orderBy: { linked_at: 'desc' }, take: 5 }).then(r => { console.log('=== Recent Account Links ==='); r.forEach(l => console.log(l.oauth_provider + '/' + l.oauth_subject + ' -> ' + l.supabase_user_id)); }).catch(console.error).finally(() => process.exit())"
-```
-
-## Security Features
-
-### Code Generation
-- 6 characters from: `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`
-- Excludes confusing characters: 0/O, 1/I/L
-- Cryptographically random generation
-
-### Code Validation
-- **Expiration**: 10 minutes from generation
-- **Single use**: Codes marked as used after successful link
-- **Rate limiting**: 1 minute cooldown between generations
-- **Attempt limit**: 3 failed attempts per code
-- **Cleanup**: Expired codes auto-deleted on new generation
-
-### Identity Verification
-- MCP OAuth headers (`X-User-Issuer`, `X-User-Sub`) identify the MCP user
-- Supabase JWT identifies the website user
-- Link created only after both identities verified
-
-## Troubleshooting
-
-### "no_oauth_identity" Error
-- MCP OAuth headers not present
-- Solution: Ensure using MCP with OAuth enabled
-
-### "Already linked" Error  
-- Account already has a link
-- Solution: Use `unlink_dexter_account` first
-
-### Code Not Working
-- Check if expired (10 minute limit)
-- Verify correct code (no O/0, I/1/L confusion)
-- Generate a new code if needed
-
-### Database Connection Issues
-```bash
-# Test Prisma connection
-node -e "require('./config/prisma.js').default.\$connect().then(() => console.log('Connected!')).catch(console.error).finally(() => process.exit())"
-```
-
-## Implementation Files
-
-### MCP Tools
-`/alpha/dexter-mcp/tools/account-linking.mjs`
-- check_dexter_account_link
-- generate_dexter_linking_code  
-- get_linked_dexter_account
-- unlink_dexter_account
-
-### API Routes
-`/token-ai/server/routes/linking.js`
-- POST /api/link/verify
-- GET /api/link/status
-- POST /api/link/generate
-- POST /api/link/remove
-
-### Web UI
-`/public/link.html`
-- Account linking interface
-- Uses `/js/auth.js` for Supabase auth
-
-### Database Schema
-`/prisma/schema.prisma`
-- account_links table
-- linking_codes table
-
-## Notes
-- The system maintains complete separation from MCP OAuth
-- Never modify the existing MCP OAuth setup (it was hard to get working)
-- Account links persist indefinitely until explicitly unlinked
-- Multiple MCP providers can link to the same Dexter account
+For historical reference, see Git history before commit `2025-02-18` to revisit the legacy code-based flow.

@@ -1,6 +1,8 @@
-# Dexter MCP OAuth Linking – Current Status & Remaining Gap
+# [ARCHIVED] Dexter MCP OAuth Linking – Legacy Link-Code Notes
 
-_Last updated: 2025-09-17 07:32 UTC_
+> **Note (2025-02-18):** The six-character linking workflow described below has been deleted from Dexter. MCP clients now rely solely on Supabase OAuth; `/api/link/*` endpoints, linking tools, and the `/link` UI no longer exist. This document remains for historical context only.
+
+_Last updated: 2025-09-17 07:32 UTC (legacy reference)_
 
 ## Mission Context
 - **Project**: Dexter (Token-AI successor) with API (`alpha/dexter-api`), Next.js UI (`alpha/dexter-fe`), and OAuth MCP server (`alpha/dexter-mcp`).

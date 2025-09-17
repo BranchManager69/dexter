@@ -196,14 +196,10 @@ If you adjust ports or add paths, update the nginx config and reload.
 ---
 ## 8. Supabase & Database Notes
 
-- Supabase project holds user accounts, managed wallets, linking tables, etc.
-- Critical tables: `account_links`, `linking_codes`, `oauth_user_wallets`, `managed_wallets`.
-- Prisma client config lives in `config/prisma.js`; both API and MCP share it.
-- For quick DB introspection:
-  ```bash
-  node -e "require('./config/prisma.js').default.account_links.findMany({ take:5, orderBy:{ linked_at:'desc' } }).then(console.log).finally(()=>process.exit())"
-  ```
-- Treat secrets (database URL, anon key) as sensitive—**never** commit them; `.env` is gitignored.
+- Supabase hosts user accounts and managed wallet metadata consumed by the API.
+- Critical tables: `managed_wallets`, `oauth_user_wallets` (legacy `account_links` / `linking_codes` were dropped Feb 2025).
+- Prisma client config lives in `config/prisma.js`; API and MCP share it.
+- Treat secrets (database URL, anon key, service key) as sensitive—**never** commit them; `.env` is gitignored.
 
 ---
 ## 9. Legacy & Cleanup

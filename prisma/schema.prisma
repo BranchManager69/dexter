@@ -131,7 +131,7 @@ model oauth_user_wallets {
   created_at     DateTime @default(now()) @db.Timestamptz(6)
   updated_at     DateTime @updatedAt @db.Timestamptz(6)
   /// Optional canonical owner mapping to Supabase auth.users.id
-  /// Populated when the OAuth identity is linked via account_links
+  /// Left for future OAuth enrichment; populated directly from Supabase when available
   supabase_user_id String? @db.VarChar(255)
 
   wallet         managed_wallets @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
@@ -684,34 +684,4 @@ model ai_strategy_parameters {
   
   @@index([is_active, version])
   @@map("ai_strategy_parameters")
-}
-
-// Account linking between MCP OAuth and Supabase users
-model account_links {
-  id                String   @id @default(uuid())
-  oauth_provider    String   @db.VarChar(128) // OAuth issuer or provider slug
-  oauth_subject     String   @db.VarChar(255) // Their unique ID from OAuth
-  supabase_user_id  String   @db.VarChar(255) // Supabase auth.users.id
-  linked_at         DateTime @default(now()) @db.Timestamptz(6)
-  link_initiated_by String   @db.VarChar(10) // "mcp" or "web"
-  
-  @@unique([oauth_provider, oauth_subject])
-  @@index([supabase_user_id])
-  @@map("account_links")
-}
-
-// Temporary linking codes for account connection
-model linking_codes {
-  code              String   @id @db.VarChar(8) // The 6-8 char code
-  oauth_provider    String?  @db.VarChar(128) // Set if initiated from MCP
-  oauth_subject     String?  @db.VarChar(255) // Set if initiated from MCP
-  supabase_user_id  String?  @db.VarChar(255) // Set if initiated from web
-  created_at        DateTime @default(now()) @db.Timestamptz(6)
-  expires_at        DateTime @db.Timestamptz(6)
-  used              Boolean  @default(false)
-  attempts          Int      @default(0)
-  
-  @@index([expires_at])
-  @@index([oauth_provider, oauth_subject])
-  @@map("linking_codes")
 }
