@@ -8,10 +8,7 @@ Next.js TypeScript UI for Dexter using OpenAI Realtime.
 - `/chat` — text-only run via dexter-api `/agent/run`
 
 ## Config
-Create `.env.local`:
-```
-NEXT_PUBLIC_API_ORIGIN=http://127.0.0.1:3030
-```
+Copy `.env.example` to `.env.local` and adjust `NEXT_PUBLIC_API_ORIGIN` to point at your API instance.
 
 ## Dev
 ```
@@ -23,4 +20,3 @@ npm run dev
 ## Notes
 - Uses `@openai/agents` RealtimeSession in the browser
 - All tools are provided by dexter-mcp via hosted MCP tools in the API
-

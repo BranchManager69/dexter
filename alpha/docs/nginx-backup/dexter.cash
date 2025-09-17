@@ -266,8 +266,8 @@ server {
     }
 
     # OAuth/OIDC discovery for ChatGPT MCP (override hidden-file block)
-    location = /.well-known/oauth-authorization-server {
-        proxy_pass http://127.0.0.1:3930/.well-known/oauth-authorization-server;
+    location = /.well-known/oauth-authorization-server/mcp {
+        proxy_pass http://127.0.0.1:3930/mcp/.well-known/oauth-authorization-server;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -276,8 +276,48 @@ server {
         add_header Cache-Control "no-store" always;
     }
 
-    location = /.well-known/openid-configuration {
-        proxy_pass http://127.0.0.1:3930/.well-known/openid-configuration;
+    location ^~ /.well-known/oauth-authorization-server {
+        proxy_pass http://127.0.0.1:3930$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        add_header Cache-Control "no-store" always;
+    }
+
+    location = /.well-known/oauth-protected-resource/mcp {
+        proxy_pass http://127.0.0.1:3930/mcp/.well-known/oauth-protected-resource;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        add_header Cache-Control "no-store" always;
+    }
+
+    location ^~ /.well-known/oauth-protected-resource {
+        proxy_pass http://127.0.0.1:3930$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        add_header Cache-Control "no-store" always;
+    }
+
+    location = /.well-known/openid-configuration/mcp {
+        proxy_pass http://127.0.0.1:3930/mcp/.well-known/openid-configuration;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        add_header Cache-Control "no-store" always;
+    }
+
+    location ^~ /.well-known/openid-configuration {
+        proxy_pass http://127.0.0.1:3930$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

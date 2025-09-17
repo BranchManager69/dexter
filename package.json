@@ -39,6 +39,7 @@
     "test:mcp": "node token-ai/scripts/test-mcp-all.mjs",
     "test:mcp:http": "TOKEN_AI_MCP_PORT=3930 TOKEN_AI_MCP_URL=http://localhost:3930/mcp DOTENV_CONFIG_PATH=.env node -r dotenv/config token-ai/scripts/test-mcp-http.mjs",
     "test:mcp:trading": "node token-ai/scripts/test-mcp-trading.mjs",
+    "smoke:prod": "node ops/smoke.mjs",
     "mcp:balances": "node token-ai/scripts/mcp-trade.mjs balances",
     "mcp:buy": "node token-ai/scripts/mcp-trade.mjs buy",
     "mcp:sell": "node token-ai/scripts/mcp-trade.mjs sell",
