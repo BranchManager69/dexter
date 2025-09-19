@@ -59,8 +59,9 @@ Keep the repos cloned as siblings (for example under `/home/branchmanager/websit
   - `ecosystem.config.cjs` (PM2 process file for API, FE, MCP)
   - `nginx-sites/` + `nginx-snippets/` (server block snapshots and shared includes)
   - `apply-nginx-alpha.sh` (example bootstrap script; review before running)
-  - `smoke.mjs` (used by `npm run smoke:prod`)
+- `smoke.mjs` (used by `npm run smoke:prod`)
 - `OPERATIONS.md` – condensed runbook covering PM2 usage, nginx walkthroughs, port map, and troubleshooting notes.
+- `ops/scripts/capture-previews.mjs` – invoked via `npm run capture:previews`; refreshes README screenshots and publishes them to `https://docs.dexter.cash/previews/`.
 
 Historic `token-ai/` assets now live in https://github.com/BranchManager69/token-ai if you need to reference older material.
 

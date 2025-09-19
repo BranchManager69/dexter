@@ -25,6 +25,9 @@ AGENTS.md
 node_modules/
 **/node_modules/
 
+# Generated preview assets
+ops/previews/
+
 # Logs and runtime
 logs/
 **/logs/

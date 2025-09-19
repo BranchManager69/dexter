@@ -6,6 +6,10 @@
   "type": "module",
   "license": "UNLICENSED",
   "scripts": {
-    "smoke:prod": "node ops/smoke.mjs"
+    "smoke:prod": "node ops/smoke.mjs",
+    "capture:previews": "node ops/scripts/capture-previews.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.55.0"
   }
 }
