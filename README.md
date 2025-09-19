@@ -13,21 +13,23 @@
 <h1 align="center">Dexter Ops</h1>
 
 <p align="center">
-  Operations glue for the Dexter stack. The application code lives in the service repositories—this project keeps the
-  shared checklists, smoke tests, and deployment templates in one place.
+  Your starting point for everything Dexter. Explore the services, keep the repos side-by-side, and use this project as
+  the shared playbook for environment setup, smoke tests, and deployment templates.
 </p>
 
 ---
 
-## Highlights
+## What Is Dexter?
 
-- **Single source of ops truth** – `OPERATIONS.md` documents layout, ports, env guidance, and PM2 usage.
-- **Reusable deployment assets** – `ops/` contains the PM2 config and nginx server block templates used in
-  production.
-- **Production smoke test** – `npm run smoke:prod` validates API health, MCP health, and OIDC metadata in
-  one shot.
+- **Dexter API** – issues OpenAI realtime tokens, proxies hosted MCP tools, and handles Coinbase x402 billing.
+- **Dexter FE** – Next.js UI that showcases the voice/chat agents.
+- **Dexter MCP** – fully managed Model Context Protocol transport with wallet tooling.
+- **Dexter Ops** (this repo) – deployment checklists, shared env hints, smoke tests, nginx snapshots.
+- **PumpStreams** – optional analytics suite tracking pump.fun livestreams (adjacent but often deployed together).
 
-## Dexter Stack
+Keep the repos cloned as siblings (for example under `/home/branchmanager/websites/`) so shared scripts and env shims work as intended.
+
+## Repo Map
 
 | Repo | Role |
 |------|------|
@@ -36,10 +38,21 @@
 | [`dexter-mcp`](https://github.com/BranchManager69/dexter-mcp) | Hosted MCP transport powering tool access |
 | [`pumpstreams`](https://github.com/BranchManager69/pumpstreams) | Pump.fun reconnaissance & analytics (adjacent tooling) |
 
-Clone the three repos alongside `dexter-ops` (for example under `/home/branchmanager/websites/`) so the
-included PM2 and nginx templates resolve paths correctly.
+## Environment & Layout
 
-## What’s Inside
+- Each service ships its own `.env.example`; copy to `.env` / `.env.local` as needed.
+- `dexter-api`’s loader will backfill values from sibling `.env` files when the repos live next to each other.
+- This repo’s `env.example` documents the shared values the smoke test and nginx helpers expect.
+- Directory layout used in production:
+  ```
+  ~/websites/
+  ├── dexter-api/
+  ├── dexter-fe/
+  ├── dexter-mcp/
+  └── dexter-ops/   ← you are here
+  ```
+
+## Deploy & Verify
 
 - `env.example` – baseline environment hints for local tooling and the smoke test.
 - `ops/` – deployment helpers:
@@ -47,10 +60,9 @@ included PM2 and nginx templates resolve paths correctly.
   - `nginx-sites/` + `nginx-snippets/` (server block snapshots and shared includes)
   - `apply-nginx-alpha.sh` (example bootstrap script; review before running)
   - `smoke.mjs` (used by `npm run smoke:prod`)
-- `OPERATIONS.md` – condensed runbook covering layout, smoke tests, nginx guidance, and env notes.
+- `OPERATIONS.md` – condensed runbook covering PM2 usage, nginx walkthroughs, port map, and troubleshooting notes.
 
-Historic `token-ai/` assets now live in https://github.com/BranchManager69/token-ai if you need to reference
-older material.
+Historic `token-ai/` assets now live in https://github.com/BranchManager69/token-ai if you need to reference older material.
 
 ## Quick Start
 
@@ -69,13 +81,13 @@ The smoke test prints success lines for each endpoint. Any failure exits non-zer
 
 The contents of `ops/` are reference implementations—adapt them to your environment:
 
-- **PM2** – `pm2 start ops/ecosystem.config.cjs` will boot all three services when they’ve been built in
-  their respective repos. Override `DEXTER_API_PORT`, `DEXTER_FE_PORT`, or `TOKEN_AI_MCP_PORT` as required.
-- **nginx** – Copy the desired files from `ops/nginx-sites/` into `/etc/nginx/sites-available/`, adjust
-  domains/paths, symlink into `sites-enabled/`, then `nginx -t && systemctl reload nginx`. The helper script
-  demonstrates the flow.
+- **PM2** – `pm2 start ops/ecosystem.config.cjs` will boot all three services when they’ve been built in their respective repos. Override `DEXTER_API_PORT`, `DEXTER_FE_PORT`, or `TOKEN_AI_MCP_PORT` as required.
+- **nginx** – Copy the desired files from `ops/nginx-sites/` into `/etc/nginx/sites-available/`, adjust domains/paths, symlink into `sites-enabled/`, then `nginx -t && systemctl reload nginx`.
 
 ## Next Steps
 
-Need deeper instructions or troubleshooting flows? Open `OPERATIONS.md` next, then follow the service-specific
-READMEs in `dexter-api`, `dexter-fe`, and `dexter-mcp` for build/run details.
+1. Read `OPERATIONS.md` for deployment details, port maps, and health-check procedures.
+2. Jump into the service repos for development instructions (`dexter-api`, `dexter-fe`, `dexter-mcp`).
+3. Visit [docs.dexter.cash](https://docs.dexter.cash) for long-form guides (OpenAI agent flows, x402 integration, MCP tooling).
+
+> **Support expectations** – Repos are provided as reference implementations. We don’t offer bespoke support for cloning the full stack. Open issues for clear bugs or documentation gaps only.
