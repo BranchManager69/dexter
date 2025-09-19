@@ -1,33 +1,46 @@
-# Dexter Ops (Legacy Monorepo)
+# Dexter Ops
 
-This repository now serves as the **operations and deployment shell** for Dexter. The runtime code for each
-service lives in its own GitHub repository:
+Dexter Ops is the thin shell that hosts shared operational chores for the Dexter stack. Service code now
+lives in individual repositories:
 
-- **dexter-api** – https://github.com/BranchManager69/dexter-api
-- **dexter-fe** – https://github.com/BranchManager69/dexter-fe
-- **dexter-mcp** – https://github.com/BranchManager69/dexter-mcp
+- `dexter-api` – https://github.com/BranchManager69/dexter-api
+- `dexter-fe` – https://github.com/BranchManager69/dexter-fe
+- `dexter-mcp` – https://github.com/BranchManager69/dexter-mcp
 
-Clone those three repos alongside this one (for example, under `/home/branchmanager/websites/`) and follow
-their READMEs for build, test, and development details. This repo now contains only shared operational
-notes and utility scripts.
+Clone those repos next to this one (for example under `/home/branchmanager/websites/`). This repo only
+provides:
 
-## Health Check
+- `env.example` — baseline environment hints for local tooling
+- `ops/` — shared scripts (PM2 config, nginx snapshots, production smoke test)
+- `OPERATIONS.md` — deployment checklist and service layout reference
 
-Use the consolidated smoke test to verify the production deployment:
+Everything else has been retired; refer to the service repos or the archived token-ai history if you need
+older material.
+
+## Quick Smoke Test
 
 ```bash
-npm install   # first time only
+npm install   # first time
 npm run smoke:prod
 ```
 
-`ops/smoke.mjs` pings the production API, MCP server, and OIDC metadata endpoints.
+The script at `ops/smoke.mjs` checks the production API, MCP endpoint, and OIDC discovery document. Expect
+zero output if the checks pass; failures are printed inline.
 
-## Deployment Overview
+## PM2 + nginx References
 
-- `dexter-api`, `dexter-fe`, and `dexter-mcp` are managed separately (each repo has its own `.env.example`,
-  PM2 instructions, and CI hooks).
-- This repo keeps shared documentation (`OPERATIONS.md`) and any automation scripts that work across
-  services (smoke tests, NGINX config snapshots, etc.).
-- The historical Token-AI codebase (`token-ai/`) remains for reference only. Treat it as archived.
+The `ops/` folder contains the kept deployment snippets:
 
-See `OPERATIONS.md` for the latest ops notes, PM2 guidance, and environment layout.
+- `ops/ecosystem.config.cjs` – single PM2 file that bootstraps the API, FE, and MCP apps when the repos sit
+  beside each other
+- `ops/nginx-sites/*.conf` and `ops/nginx-snippets/` – snapshots of the production server blocks and common
+  include files
+- `ops/apply-nginx-alpha.sh` – example script demonstrating how to wire the configs on a fresh host (review
+  the referenced snippet before running)
+
+Adjust paths/ports as needed for new environments; the files are intended as templates, not turnkey deploys.
+
+## Need More Detail?
+
+`OPERATIONS.md` captures the authoritative runbook (directory layout, port map, env guidelines, smoke test
+explanation). Check that document next when you are preparing a deploy or onboarding a new operator.

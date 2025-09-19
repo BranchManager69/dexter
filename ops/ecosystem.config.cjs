@@ -18,6 +18,7 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: process.env.DEXTER_API_PORT || 3030,
       },
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
     {
       name: 'dexter-fe',
@@ -30,6 +31,7 @@ module.exports = {
         NODE_ENV: 'production',
         NEXT_PUBLIC_API_ORIGIN: process.env.NEXT_PUBLIC_API_ORIGIN || 'https://api.dexter.cash',
       },
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
     {
       name: 'dexter-mcp',
@@ -45,11 +47,13 @@ module.exports = {
         TOKEN_AI_MCP_OAUTH: process.env.TOKEN_AI_MCP_OAUTH ?? 'true',
         TOKEN_AI_MCP_OAUTH_ALLOW_ANY: process.env.TOKEN_AI_MCP_OAUTH_ALLOW_ANY ?? '0',
         TOKEN_AI_OIDC_ISSUER: process.env.TOKEN_AI_OIDC_ISSUER || 'https://dexter.cash',
+        TOKEN_AI_OIDC_CLIENT_ID: process.env.TOKEN_AI_OIDC_CLIENT_ID,
         TOKEN_AI_OIDC_AUTHORIZATION_ENDPOINT: process.env.TOKEN_AI_OIDC_AUTHORIZATION_ENDPOINT || 'https://dexter.cash/api/connector/oauth/authorize',
         TOKEN_AI_OIDC_TOKEN_ENDPOINT: process.env.TOKEN_AI_OIDC_TOKEN_ENDPOINT || 'https://dexter.cash/api/connector/oauth/token',
         TOKEN_AI_OIDC_USERINFO: process.env.TOKEN_AI_OIDC_USERINFO || 'https://dexter.cash/api/connector/oauth/userinfo',
         TOKEN_AI_OIDC_SCOPES: process.env.TOKEN_AI_OIDC_SCOPES || 'wallet.read wallet.trade',
       },
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
   ],
 };

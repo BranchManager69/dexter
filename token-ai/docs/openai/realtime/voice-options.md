@@ -1,2 +1,0 @@
-Voice options
-Realtime sessions can be configured to use one of several built‑in voices when producing audio output. You can set the voice on session creation (or on a response.create) to control how the model sounds. Current voice options are alloy, ash, ballad, coral, echo, sage, shimmer, and verse. Once the model has emitted audio in a session, the voice cannot be modified for that session.

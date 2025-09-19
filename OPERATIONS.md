@@ -1,67 +1,75 @@
 # Dexter Operations Manual
 
-_Last updated: 2025-09-17_
+_Last updated: 2025-09-18_
 
-Dexter now ships as three independent repositories. This repo only stores shared ops notes and utility scripts.
-Keep the service repos checked out alongside this one (for example under `/home/branchmanager/websites/`):
+Dexter runs as three services with their own repositories. This repo only carries shared templates and
+utility scripts that make deployments smoother.
 
-| Service      | Repo URL                                           | Default Port |
-|--------------|----------------------------------------------------|--------------|
-| dexter-api   | https://github.com/BranchManager69/dexter-api      | 3030         |
-| dexter-fe    | https://github.com/BranchManager69/dexter-fe       | 43017        |
-| dexter-mcp   | https://github.com/BranchManager69/dexter-mcp      | 3930         |
+## Service Map
 
-## 1. Directory Layout
+| Service    | Repo URL                                          | Default Port |
+|------------|---------------------------------------------------|--------------|
+| API        | https://github.com/BranchManager69/dexter-api     | 3030         |
+| Frontend   | https://github.com/BranchManager69/dexter-fe      | 43017        |
+| MCP Server | https://github.com/BranchManager69/dexter-mcp     | 3930         |
+
+Keep the three repositories cloned alongside `dexter-ops` (for example under `/home/branchmanager/websites/`) so
+the PM2 config and nginx snippets here resolve paths correctly.
+
+## Directory Expectations
 
 ```
 ~/websites/
-├── dexter-ops/        # this repo
-├── dexter-api/        # API service repo
-├── dexter-fe/         # Next.js frontend repo
-├── dexter-mcp/        # MCP server repo
-└── token-ai/          # archived legacy tooling (reference only)
+├── dexter-api/
+├── dexter-fe/
+├── dexter-mcp/
+└── dexter-ops/           # this repo
 ```
 
-Each service repo carries its own `.env.example`, README, build scripts, and deployment instructions.
+Each service repo owns its build steps, `.env.example`, and deployment instructions. Use this repo only for shared glue.
 
-## 2. Health Monitoring
+## Smoke Test
 
-`npm run smoke:prod` (from this repo) calls:
+Run the production smoke test from this repo:
+
+```bash
+npm run smoke:prod
+```
+
+`ops/smoke.mjs` performs three checks:
+
 - `https://api.dexter.cash/health`
 - `https://dexter.cash/mcp/health`
 - `https://dexter.cash/.well-known/openid-configuration`
 
-Use it after deploys or when checking stability.
+All responses must be HTTP 200 with the expected JSON payload. Any failure causes a non-zero exit.
 
-## 3. PM2 / Deployment
+## PM2 Helper
 
-Manage each service from its own repo following the instructions in that repo’s README. Typical flow:
+`ops/ecosystem.config.cjs` starts the three services when the repos are co-located. After building in each repo, run:
 
 ```bash
-cd ~/websites/dexter-api   && git pull && npm ci && npm run build
-cd ~/websites/dexter-fe    && git pull && npm ci && npm run build
-cd ~/websites/dexter-mcp   && git pull && npm ci
+pm2 start ops/ecosystem.config.cjs
 ```
 
-Start or restart via the PM2 configs defined in the service repos (e.g., `pm2 start ecosystem.config.cjs`).
+Override ports via environment variables (`DEXTER_API_PORT`, `DEXTER_FE_PORT`, `TOKEN_AI_MCP_PORT`) if needed.
 
-## 4. Environment Variables
+## nginx Snapshots
 
-- Each repo has an `.env.example`; copy to `.env` and adjust for the environment.
-- Production secrets are stored per service. This repo no longer carries authoritative env files.
+`ops/nginx-sites/` and `ops/nginx-snippets/` mirror the production server blocks and include files. Treat them as templates:
 
-## 5. Logs
+1. Copy to `/etc/nginx/sites-available/`.
+2. Adjust domains/paths as required.
+3. Enable and reload nginx.
 
-- `~/.pm2/logs/dexter-api-*.log`
-- `~/.pm2/logs/dexter-fe-*.log`
-- `~/.pm2/logs/dexter-mcp-*.log`
+`ops/apply-nginx-alpha.sh` illustrates the flow; review the referenced conf before running it on a server.
 
-Use the PM2 helpers defined in each service repo (e.g., `pm2 logs dexter-api`).
+## Environment Files
 
-## 6. Legacy Artifacts
+- Each service repo maintains its own `.env.example` and production secret state.
+- `env.example` in this repo documents shared values the scripts expect when run locally.
+- For production, rely on the service repos’ secrets—this repo is not authoritative.
 
-- `token-ai/` remains for historical reference only.
-- Old mono-repo scripts in the root `package.json` have been removed; use the new service repos for
-development tasks.
+## Where to Go Next
 
-For anything not covered here, consult the README in the respective service repository.
+For service-specific runbooks, troubleshooting, or deployment steps, consult the READMEs and ops docs in the respective service repositories. Dexter Ops stays intentionally minimal.
