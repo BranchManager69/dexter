@@ -1,46 +1,66 @@
 # Dexter Ops
 
-Dexter Ops is the thin shell that hosts shared operational chores for the Dexter stack. Service code now
-lives in individual repositories:
+Operations glue for the Dexter stack. The application code lives in the service repositories—this project
+keeps the shared checklists, smoke tests, and deployment templates in one place.
 
-- `dexter-api` – https://github.com/BranchManager69/dexter-api
-- `dexter-fe` – https://github.com/BranchManager69/dexter-fe
-- `dexter-mcp` – https://github.com/BranchManager69/dexter-mcp
+---
 
-Clone those repos next to this one (for example under `/home/branchmanager/websites/`). This repo only
-provides:
+## Highlights
 
-- `env.example` — baseline environment hints for local tooling
-- `ops/` — shared scripts (PM2 config, nginx snapshots, production smoke test)
-- `OPERATIONS.md` — deployment checklist and service layout reference
+- **Single source of ops truth** – `OPERATIONS.md` documents layout, ports, env guidance, and PM2 usage.
+- **Reusable deployment assets** – `ops/` contains the PM2 config and nginx server block templates used in
+  production.
+- **Production smoke test** – `npm run smoke:prod` validates API health, MCP health, and OIDC metadata in
+  one shot.
 
-Everything else has been retired; refer to the service repos or the archived token-ai history if you need
+## Sister Repositories
+
+| Repo | Description |
+|------|-------------|
+| [`dexter-api`](https://github.com/BranchManager69/dexter-api) | REST + realtime API service |
+| [`dexter-fe`](https://github.com/BranchManager69/dexter-fe) | Next.js frontend |
+| [`dexter-mcp`](https://github.com/BranchManager69/dexter-mcp) | MCP server with hosted tools |
+
+Clone the three repos alongside `dexter-ops` (for example under `/home/branchmanager/websites/`) so the
+included PM2 and nginx templates resolve paths correctly.
+
+## What’s Inside
+
+- `env.example` – baseline environment hints for local tooling and the smoke test.
+- `ops/` – deployment helpers:
+  - `ecosystem.config.cjs` (PM2 process file for API, FE, MCP)
+  - `nginx-sites/` + `nginx-snippets/` (server block snapshots and shared includes)
+  - `apply-nginx-alpha.sh` (example bootstrap script; review before running)
+  - `smoke.mjs` (used by `npm run smoke:prod`)
+- `OPERATIONS.md` – condensed runbook covering layout, smoke tests, nginx guidance, and env notes.
+
+Historic `token-ai/` assets now live in https://github.com/BranchManager69/token-ai if you need to reference
 older material.
 
-## Quick Smoke Test
+## Quick Start
 
 ```bash
-npm install   # first time
+git clone https://github.com/BranchManager69/dexter-ops.git
+cd dexter-ops
+npm install          # first time only
+
+# Run the production health check
 npm run smoke:prod
 ```
 
-The script at `ops/smoke.mjs` checks the production API, MCP endpoint, and OIDC discovery document. Expect
-zero output if the checks pass; failures are printed inline.
+The smoke test prints success lines for each endpoint. Any failure exits non-zero with the offending check.
 
-## PM2 + nginx References
+## Deployment Templates
 
-The `ops/` folder contains the kept deployment snippets:
+The contents of `ops/` are reference implementations—adapt them to your environment:
 
-- `ops/ecosystem.config.cjs` – single PM2 file that bootstraps the API, FE, and MCP apps when the repos sit
-  beside each other
-- `ops/nginx-sites/*.conf` and `ops/nginx-snippets/` – snapshots of the production server blocks and common
-  include files
-- `ops/apply-nginx-alpha.sh` – example script demonstrating how to wire the configs on a fresh host (review
-  the referenced snippet before running)
+- **PM2** – `pm2 start ops/ecosystem.config.cjs` will boot all three services when they’ve been built in
+  their respective repos. Override `DEXTER_API_PORT`, `DEXTER_FE_PORT`, or `TOKEN_AI_MCP_PORT` as required.
+- **nginx** – Copy the desired files from `ops/nginx-sites/` into `/etc/nginx/sites-available/`, adjust
+  domains/paths, symlink into `sites-enabled/`, then `nginx -t && systemctl reload nginx`. The helper script
+  demonstrates the flow.
 
-Adjust paths/ports as needed for new environments; the files are intended as templates, not turnkey deploys.
+## Next Steps
 
-## Need More Detail?
-
-`OPERATIONS.md` captures the authoritative runbook (directory layout, port map, env guidelines, smoke test
-explanation). Check that document next when you are preparing a deploy or onboarding a new operator.
+Need deeper instructions or troubleshooting flows? Open `OPERATIONS.md` next, then follow the service-specific
+READMEs in `dexter-api`, `dexter-fe`, and `dexter-mcp` for build/run details.
