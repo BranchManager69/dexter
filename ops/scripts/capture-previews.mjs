@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir, copyFile } from 'node:fs/promises';
+import { mkdir, copyFile, access } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -82,6 +82,23 @@ async function capture() {
     }
   } finally {
     await browser.close();
+  }
+
+  const staticAssets = [
+    {
+      name: 'dexter-stack-wordmark.svg',
+      src: join(previewsDir, 'dexter-stack-wordmark.svg'),
+    },
+  ];
+
+  for (const asset of staticAssets) {
+    try {
+      await access(asset.src);
+      await copyFile(asset.src, join(publishDir, asset.name));
+      console.log(`   synced ${asset.name} → ${join(publishDir, asset.name)}`);
+    } catch (err) {
+      console.warn(`   skipped ${asset.name}: ${err.message}`);
+    }
   }
 
   if (mode === 'video') {
