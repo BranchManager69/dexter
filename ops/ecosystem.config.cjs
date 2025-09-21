@@ -66,6 +66,18 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
     {
+      name: 'dexter-agents',
+      cwd: path.resolve(ROOT, '../dexter-agents'),
+      script: 'node_modules/next/dist/bin/next',
+      args: 'start -p ' + (process.env.DEXTER_AGENTS_PORT || 3210),
+      instances: 1,
+      exec_mode: 'fork',
+      env: {
+        NODE_ENV: 'production',
+      },
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+    },
+    {
       name: 'dexter-mcp',
       cwd: MCP_DIR,
       script: 'http-server-oauth.mjs',
