@@ -59,7 +59,13 @@ async function capture() {
       });
       const page = await context.newPage();
       log(`→ Capturing ${target.url}`);
-      await page.goto(target.url, { waitUntil: 'networkidle' });
+      try {
+        await page.goto(target.url, { waitUntil: 'networkidle', timeout: 45000 });
+      } catch (err) {
+        log(`   warn: failed to capture ${target.url}: ${err.message}`);
+        await context.close();
+        continue;
+      }
 
       if (mode === 'video') {
         // simple scroll-and-return animation so videos have movement
