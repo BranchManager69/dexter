@@ -61,7 +61,7 @@ Keep the repos cloned as siblings (for example under `/home/branchmanager/websit
   - `apply-nginx-alpha.sh` (example bootstrap script; review before running)
 - `smoke.mjs` (used by `npm run smoke:prod`)
 - `OPERATIONS.md` – condensed runbook covering PM2 usage, nginx walkthroughs, port map, and troubleshooting notes.
-- `ops/scripts/capture-previews.mjs` – invoked via `npm run capture:previews`; refreshes README screenshots and publishes them to `https://docs.dexter.cash/previews/`.
+- `ops/scripts/capture-previews.mjs` – invoked via `dxsnap` (or `npm run capture:previews`); refreshes README screenshots and publishes them to `https://docs.dexter.cash/previews/`.
 
 Historic `token-ai/` assets now live in https://github.com/BranchManager69/token-ai if you need to reference older material.
 
@@ -89,6 +89,6 @@ The contents of `ops/` are reference implementations—adapt them to your enviro
 
 1. Read `OPERATIONS.md` for deployment details, port maps, and health-check procedures.
 2. Jump into the service repos for development instructions (`dexter-api`, `dexter-fe`, `dexter-mcp`).
-3. Visit [docs.dexter.cash](https://docs.dexter.cash) for long-form guides (OpenAI agent flows, x402 integration, MCP tooling).
+3. Use `dxsnap` after UI changes to refresh README previews, then visit [docs.dexter.cash](https://docs.dexter.cash) for long-form guides (OpenAI agent flows, x402 integration, MCP tooling).
 
 > **Support expectations** – Repos are provided as reference implementations. We don’t offer bespoke support for cloning the full stack. Open issues for clear bugs or documentation gaps only.
