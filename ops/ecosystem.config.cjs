@@ -49,6 +49,7 @@ module.exports = {
         SUPABASE_ANON_KEY: val('SUPABASE_ANON_KEY', ''),
         SUPABASE_JWT_SECRET: val('SUPABASE_JWT_SECRET', ''),
         DATABASE_URL: val('DATABASE_URL', ''),
+        CONNECTOR_CODE_SALT: val('CONNECTOR_CODE_SALT', ''),
       },
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
