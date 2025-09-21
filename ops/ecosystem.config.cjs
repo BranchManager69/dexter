@@ -78,6 +78,8 @@ module.exports = {
         TOKEN_AI_MCP_PUBLIC_URL: val('TOKEN_AI_MCP_PUBLIC_URL', 'https://dexter.cash/mcp'),
         TOKEN_AI_MCP_OAUTH: process.env.TOKEN_AI_MCP_OAUTH ?? 'true',
         TOKEN_AI_MCP_OAUTH_ALLOW_ANY: process.env.TOKEN_AI_MCP_OAUTH_ALLOW_ANY ?? '0',
+        // Ensure MCP forwards API-bound calls to the dedicated API host
+        DEXTER_API_BASE_URL: process.env.DEXTER_API_BASE_URL || 'https://api.dexter.cash/api',
         // Align issuer to path-aware MCP base to avoid resolver mismatch
         TOKEN_AI_OIDC_ISSUER: 'https://dexter.cash/mcp',
         // Single client id (cid_…)
