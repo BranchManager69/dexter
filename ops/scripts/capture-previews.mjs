@@ -11,7 +11,21 @@ const previewsDir = join(__dirname, '../previews');
 const previewsVideoDir = join(previewsDir, 'video');
 const publishDir = '/var/www/docs.dexter.cash/previews';
 
-const mode = process.argv.includes('--png-only') ? 'png' : 'video';
+const args = process.argv.slice(2);
+const quiet = args.includes('--quiet');
+const mode = args.includes('--png-only') ? 'png' : 'video';
+
+const log = (...values) => {
+  if (!quiet) {
+    console.log(...values);
+  }
+};
+
+const note = (...values) => {
+  if (!quiet) {
+    console.log(...values);
+  }
+};
 
 const targets = [
   {
@@ -44,7 +58,7 @@ async function capture() {
             : undefined,
       });
       const page = await context.newPage();
-      console.log(`→ Capturing ${target.url}`);
+      log(`→ Capturing ${target.url}`);
       await page.goto(target.url, { waitUntil: 'networkidle' });
 
       if (mode === 'video') {
@@ -67,7 +81,7 @@ async function capture() {
       const localPng = join(previewsDir, pngName);
       await page.screenshot({ path: localPng, fullPage: false });
       await copyFile(localPng, join(publishDir, pngName));
-      console.log(`   saved ${join(publishDir, pngName)}`);
+      log(`   saved ${join(publishDir, pngName)}`);
 
       const videoHandle = page.video();
       await page.close();
@@ -77,7 +91,7 @@ async function capture() {
       if (mode === 'video' && videoPath) {
         const videoDest = join(publishDir, videoName);
         await copyFile(videoPath, videoDest);
-        console.log(`   saved ${videoDest}`);
+        log(`   saved ${videoDest}`);
       }
     }
   } finally {
@@ -95,16 +109,21 @@ async function capture() {
     try {
       await access(asset.src);
       await copyFile(asset.src, join(publishDir, asset.name));
-      console.log(`   synced ${asset.name} → ${join(publishDir, asset.name)}`);
+      log(`   synced ${asset.name} → ${join(publishDir, asset.name)}`);
     } catch (err) {
       console.warn(`   skipped ${asset.name}: ${err.message}`);
     }
   }
 
+  if (quiet) {
+    console.log('dexsnap: previews refreshed');
+    return;
+  }
+
   if (mode === 'video') {
-    console.log('\nPreviews refreshed. README assets available at https://docs.dexter.cash/previews/<slug>.{png,webm}');
+    note('\nPreviews refreshed. README assets available at https://docs.dexter.cash/previews/<slug>.{png,webm}');
   } else {
-    console.log('\nPNG previews refreshed. README assets available at https://docs.dexter.cash/previews/<slug>.png');
+    note('\nPNG previews refreshed. README assets available at https://docs.dexter.cash/previews/<slug>.png');
   }
 }
 
